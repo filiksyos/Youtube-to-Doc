@@ -76,6 +76,10 @@ async def process_query(
         # Process the video
         video_info, transcript, comments = await processor.process_video(query)
         
+        # Check if transcript extraction failed
+        if transcript is None:
+            print("WARNING: No transcript was extracted - checking reasons...")
+        
         # Generate documentation content
         content = _generate_documentation(video_info, transcript, comments, include_comments)
 

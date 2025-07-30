@@ -39,6 +39,31 @@ class YoutubeProcessor:
         """Initialize the YouTube processor."""
         self.text_formatter = TextFormatter() if TextFormatter else None
         self.youtube_api_key = os.getenv("YOUTUBE_API_KEY")
+        self._check_dependencies()
+    
+    def _check_dependencies(self):
+        """Check if required dependencies are available."""
+        print("DEBUG: Checking YouTube processor dependencies...")
+        
+        if YouTubeTranscriptApi is None:
+            print("ERROR: youtube-transcript-api not imported - transcript extraction will fail")
+        else:
+            print("SUCCESS: youtube-transcript-api imported successfully")
+        
+        if TextFormatter is None:
+            print("ERROR: TextFormatter not imported - transcript formatting will fail")
+        else:
+            print("SUCCESS: TextFormatter imported successfully")
+        
+        if yt_dlp is None:
+            print("WARNING: yt-dlp not imported - will fallback to pytube")
+        else:
+            print("SUCCESS: yt-dlp imported successfully")
+        
+        if YouTube is None:
+            print("WARNING: pytube not imported - video info extraction limited")
+        else:
+            print("SUCCESS: pytube imported successfully")
     
     async def process_video(
         self, 
@@ -183,40 +208,121 @@ class YoutubeProcessor:
         Optional[str]
             The transcript text or None if not available.
         """
+        print(f"DEBUG: Attempting transcript extraction for video_id: {video_id}")
+        print(f"DEBUG: Language: {language}, Max length: {max_length}")
+        
         if not YouTubeTranscriptApi:
+            print("ERROR: YouTubeTranscriptApi is not available - package not imported")
+            return None
+        
+        if not self.text_formatter:
+            print("ERROR: TextFormatter is not available - package not imported")
             return None
         
         def extract_transcript():
             try:
-                # Try to get transcript in specified language
-                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                print(f"DEBUG: Creating YouTubeTranscriptApi instance...")
                 
-                # Try manual captions first, then auto-generated
+                # Create an instance of YouTubeTranscriptApi (correct usage pattern)
+                ytt_api = YouTubeTranscriptApi()
+                print(f"DEBUG: Available methods on ytt_api instance: {[method for method in dir(ytt_api) if not method.startswith('_')]}")
+                
+                # Try the direct fetch method first (current API)
                 try:
-                    transcript = transcript_list.find_manually_created_transcript([language])
-                except:
+                    print(f"DEBUG: Attempting fetch for video {video_id} with language {language}")
+                    fetched_transcript = ytt_api.fetch(video_id, languages=[language])
+                    print(f"DEBUG: Successfully fetched transcript object: {type(fetched_transcript)}")
+                    
+                    # Use the FetchedTranscript object directly for formatting
+                    print(f"DEBUG: Retrieved {len(fetched_transcript)} transcript segments")
+                    
+                    print("DEBUG: Formatting transcript...")
+                    formatted_text = self.text_formatter.format_transcript(fetched_transcript)
+                    print(f"DEBUG: Formatted transcript length: {len(formatted_text)} characters")
+                    
+                    # Trim to max length if specified
+                    if max_length and len(formatted_text) > max_length:
+                        formatted_text = formatted_text[:max_length] + "\n[Transcript truncated...]"
+                        print(f"DEBUG: Truncated transcript to {max_length} characters")
+                    
+                    print("DEBUG: Transcript extraction completed successfully")
+                    return formatted_text
+                    
+                except Exception as e:
+                    print(f"DEBUG: Direct fetch failed: {e}")
+                    
+                    # Fallback to listing transcripts and manually selecting
                     try:
-                        transcript = transcript_list.find_generated_transcript([language])
-                    except:
-                        # Fall back to any available transcript
-                        transcript = transcript_list.find_transcript(['en'])
-                
-                # Fetch and format transcript
-                transcript_data = transcript.fetch()
-                formatted_text = self.text_formatter.format_transcript(transcript_data) if self.text_formatter else ""
-                
-                # Trim to max length if specified
-                if max_length and len(formatted_text) > max_length:
-                    formatted_text = formatted_text[:max_length] + "\n[Transcript truncated...]"
-                
-                return formatted_text
+                        print(f"DEBUG: Trying list method for video {video_id}")
+                        transcript_list = ytt_api.list(video_id)
+                        print(f"DEBUG: Retrieved transcript list: {type(transcript_list)}")
+                        
+                        print(f"DEBUG: Available transcripts: {[t.language_code for t in transcript_list]}")
+                        
+                        # Try manual captions first, then auto-generated
+                        transcript = None
+                        try:
+                            print(f"DEBUG: Attempting to find manually created transcript in {language}")
+                            transcript = transcript_list.find_manually_created_transcript([language])
+                            print(f"DEBUG: Found manually created transcript in {language}")
+                        except Exception as e:
+                            print(f"DEBUG: Manual transcript not found: {e}")
+                            try:
+                                print(f"DEBUG: Attempting to find auto-generated transcript in {language}")
+                                transcript = transcript_list.find_generated_transcript([language])
+                                print(f"DEBUG: Found auto-generated transcript in {language}")
+                            except Exception as e2:
+                                print(f"DEBUG: Auto-generated transcript not found: {e2}")
+                                # Fall back to any available transcript
+                                try:
+                                    print("DEBUG: Falling back to any available English transcript")
+                                    transcript = transcript_list.find_transcript(['en'])
+                                    print("DEBUG: Found fallback English transcript")
+                                except Exception as e3:
+                                    print(f"DEBUG: No transcript found at all: {e3}")
+                                    raise e3
+                        
+                        if not transcript:
+                            print("ERROR: No transcript object found")
+                            return None
+                        
+                        # Fetch and format transcript
+                        print("DEBUG: Fetching transcript data...")
+                        fetched_transcript = transcript.fetch()
+                        print(f"DEBUG: Retrieved {len(fetched_transcript)} transcript segments")
+                        
+                        print("DEBUG: Formatting transcript...")
+                        formatted_text = self.text_formatter.format_transcript(fetched_transcript)
+                        print(f"DEBUG: Formatted transcript length: {len(formatted_text)} characters")
+                        
+                        # Trim to max length if specified
+                        if max_length and len(formatted_text) > max_length:
+                            formatted_text = formatted_text[:max_length] + "\n[Transcript truncated...]"
+                            print(f"DEBUG: Truncated transcript to {max_length} characters")
+                        
+                        print("DEBUG: Transcript extraction completed successfully")
+                        return formatted_text
+                        
+                    except Exception as e2:
+                        print(f"DEBUG: List method also failed: {e2}")
+                        raise e2
                 
             except Exception as e:
-                print(f"Transcript extraction failed: {e}")
+                print(f"ERROR: Transcript extraction failed: {e}")
+                print(f"ERROR: Exception type: {type(e).__name__}")
+                import traceback
+                print(f"ERROR: Full traceback:\n{traceback.format_exc()}")
                 return None
         
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, extract_transcript)
+        result = await loop.run_in_executor(None, extract_transcript)
+        
+        if result is None:
+            print("WARNING: Transcript extraction returned None")
+        else:
+            print(f"SUCCESS: Transcript extraction returned {len(result)} characters")
+        
+        return result
     
     async def _get_comments(self, video_id: str, max_comments: int = 20) -> Optional[List[str]]:
         """

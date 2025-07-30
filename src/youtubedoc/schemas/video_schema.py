@@ -33,8 +33,6 @@ class VideoQuery(BaseModel):
         """Validate transcript length is reasonable."""
         if v < 100:
             raise ValueError("Transcript length must be at least 100 characters")
-        if v > 100000:
-            raise ValueError("Transcript length cannot exceed 100,000 characters")
         return v
     
     def extract_video_id(self) -> str:
