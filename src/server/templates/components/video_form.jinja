@@ -1,0 +1,123 @@
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+    <form method="post" class="space-y-6">
+        <!-- Main input section -->
+        <div class="space-y-4">
+            <label for="input_text" class="block text-sm font-medium text-gray-700">
+                YouTube Video URL
+            </label>
+            <input 
+                type="text" 
+                id="input_text" 
+                name="input_text" 
+                placeholder="https://www.youtube.com/watch?v=..." 
+                value="{{ video_url or '' }}"
+                class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                required
+            >
+        </div>
+
+        <!-- Advanced options -->
+        <div class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Transcript length -->
+                <div>
+                    <label for="max_transcript_length" class="block text-sm font-medium text-gray-700">
+                        Max Transcript Length
+                    </label>
+                    <input 
+                        type="range" 
+                        id="max_transcript_length" 
+                        name="max_transcript_length" 
+                        min="100" 
+                        max="50000" 
+                        value="{{ default_transcript_length or 10000 }}"
+                        class="w-full mt-1"
+                        oninput="updateTranscriptLength(this.value)"
+                    >
+                    <div class="text-xs text-gray-500 mt-1">
+                        <span id="transcript_length_display">{{ default_transcript_length or 10000 }}</span> characters
+                    </div>
+                </div>
+
+                <!-- Language selection -->
+                <div>
+                    <label for="language" class="block text-sm font-medium text-gray-700">
+                        Transcript Language
+                    </label>
+                    <select 
+                        id="language" 
+                        name="language" 
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500"
+                    >
+                        <option value="en" {{ 'selected' if language == 'en' else '' }}>English</option>
+                        <option value="es" {{ 'selected' if language == 'es' else '' }}>Spanish</option>
+                        <option value="fr" {{ 'selected' if language == 'fr' else '' }}>French</option>
+                        <option value="de" {{ 'selected' if language == 'de' else '' }}>German</option>
+                        <option value="it" {{ 'selected' if language == 'it' else '' }}>Italian</option>
+                        <option value="pt" {{ 'selected' if language == 'pt' else '' }}>Portuguese</option>
+                        <option value="ja" {{ 'selected' if language == 'ja' else '' }}>Japanese</option>
+                        <option value="ko" {{ 'selected' if language == 'ko' else '' }}>Korean</option>
+                        <option value="zh" {{ 'selected' if language == 'zh' else '' }}>Chinese</option>
+                    </select>
+                </div>
+
+                <!-- Include comments -->
+                <div class="flex items-center">
+                    <div class="mt-6">
+                        <label class="flex items-center">
+                            <input 
+                                type="checkbox" 
+                                name="include_comments" 
+                                value="true"
+                                {{ 'checked' if include_comments else '' }}
+                                class="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                            >
+                            <span class="ml-2 text-sm text-gray-700">Include Comments</span>
+                        </label>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Extract top video comments
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit button -->
+        <div class="flex justify-center">
+            <button 
+                type="submit" 
+                class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
+            >
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Generate Documentation
+            </button>
+        </div>
+    </form>
+
+    <!-- Example videos section -->
+    {% if show_examples and examples %}
+        <div class="mt-8 pt-6 border-t border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Example Videos</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {% for example in examples %}
+                    <button 
+                        type="button"
+                        onclick="submitExample('{{ example.url }}')"
+                        class="text-left p-3 border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-colors duration-200"
+                    >
+                        <div class="font-medium text-gray-900">{{ example.name }}</div>
+                        <div class="text-sm text-gray-500 truncate">{{ example.url }}</div>
+                    </button>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function updateTranscriptLength(value) {
+    document.getElementById('transcript_length_display').textContent = value;
+}
+</script> 

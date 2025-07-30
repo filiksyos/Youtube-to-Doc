@@ -1,0 +1,64 @@
+{% extends "base.jinja" %}
+
+{% block extra_head %}
+    <script>
+    function submitExample(videoUrl) {
+        const input = document.getElementById('input_text');
+        input.value = videoUrl;
+        input.focus();
+    }
+    </script>
+{% endblock %}
+
+{% block content %}
+    <div class="mb-8">
+        <div class="relative w-full mx-auto flex sm:flex-row flex-col justify-center items-start sm:items-center">
+            <!-- YouTube Icon -->
+            <svg class="h-auto w-16 sm:w-20 md:w-24 flex-shrink-0 p-2 md:relative sm:absolute lg:absolute left-0 lg:-translate-x-full lg:ml-32 md:translate-x-10 sm:-translate-y-16 md:-translate-y-0 -translate-x-2 lg:-translate-y-10"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 xmlns="http://www.w3.org/2000/svg">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" 
+                      fill="#FF0000"/>
+            </svg>
+            
+            <h1 class="text-4xl sm:text-5xl sm:pt-20 lg:pt-5 md:text-6xl lg:text-7xl font-bold tracking-tighter w-full inline-block text-left md:text-center relative">
+                YouTube to
+                <br>
+                <span class="text-red-600">Doc</span>&nbsp;
+            </h1>
+            
+            <!-- Document Icon -->
+            <svg class="w-16 lg:w-20 h-auto lg:absolute flex-shrink-0 right-0 bottom-0 md:block hidden translate-y-10 md:translate-y-20 lg:translate-y-4 lg:-translate-x-12 -translate-x-10"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 xmlns="http://www.w3.org/2000/svg">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" 
+                      fill="#4F46E5" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="14,2 14,8 20,8" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="16" y1="13" x2="8" y2="13" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="16" y1="17" x2="8" y2="17" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="10,9 9,9 8,9" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        
+        <p class="text-gray-600 text-lg max-w-2xl mx-auto text-center mt-8">
+            Turn any YouTube video into a documentation link.
+        </p>
+        <p class="text-gray-600 text-lg max-w-2xl mx-auto text-center mt-0">
+            Extract transcripts, metadata, and generate AI-friendly documentation.
+        </p>
+    </div>
+
+    {% if error_message %}
+        <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"
+             id="error-message"
+             data-message="{{ error_message }}">{{ error_message }}</div>
+    {% endif %}
+
+    {% with is_index=true, show_examples=true %}
+        {% include 'components/video_form.jinja' %}
+    {% endwith %}
+
+    {% include 'components/result.jinja' %}
+{% endblock %} 

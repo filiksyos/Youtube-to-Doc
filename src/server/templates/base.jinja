@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+        
+        <!-- Search Engine Meta Tags -->
+        <meta name="description" content="Turn any YouTube video into a simple documentation link that LLMs can easily index.">
+        <meta name="keywords" content="YouTube, documentation, AI tools, LLM integration, video transcripts, content extraction, video analysis">
+        <meta name="robots" content="index, follow">
+        
+        <!-- Favicons -->
+        <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+        <link rel="icon" type="image/png" sizes="64x64" href="/static/favicon-64.png">
+        <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+        
+        <!-- Web App Meta -->
+        <meta name="apple-mobile-web-app-title" content="YouTube to Doc">
+        <meta name="application-name" content="YouTube to Doc">
+        <meta name="theme-color" content="#FF0000">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        
+        <!-- OpenGraph Meta Tags -->
+        <meta property="og:title" content="YouTube to Doc">
+        <meta property="og:description" content="Turn any YouTube video into a simple documentation link that LLMs can easily index.">
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="{{ request.url }}">
+        <meta property="og:image" content="/static/og-image.png">
+        
+        <title>
+            {% block title %}YouTube to Doc{% endblock %}
+        </title>
+
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="/static/js/utils.js"></script>
+        
+        {% block extra_head %}{% endblock %}
+    </head>
+    <body class="bg-gradient-to-br from-red-50 to-orange-50 min-h-screen flex flex-col">
+        {% include 'components/navbar.jinja' %}
+        
+        <!-- Main content wrapper -->
+        <main class="flex-1 w-full">
+            <div class="max-w-4xl mx-auto px-4 py-8">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+        
+        {% include 'components/footer.jinja' %}
+        {% block extra_scripts %}{% endblock %}
+    </body>
+</html> 
