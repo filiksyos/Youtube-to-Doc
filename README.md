@@ -33,8 +33,8 @@ Turn any YouTube video into a comprehensive documentation link that AI coding to
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/youtubedoc.git
-cd youtubedoc
+git clone https://github.com/filiksyos/Youtube-to-Doc.git
+cd Youtube-to-Doc
 
 # Run with Docker Compose
 docker-compose up -d
@@ -44,8 +44,8 @@ docker-compose up -d
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/youtubedoc.git
-cd youtubedoc
+git clone https://github.com/filiksyos/Youtube-to-Doc.git
+cd Youtube-to-Doc
 
 # Install dependencies (using pnpm as specified in requirements)
 pip install -r requirements.txt
