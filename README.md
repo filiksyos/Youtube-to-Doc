@@ -33,7 +33,7 @@ Turn any YouTube video into a comprehensive documentation link that AI coding to
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/youtubedoc.git
+git clone https://github.com/filiksyos/Youtube-to-Doc.git
 cd youtubedoc
 
 # Run with Docker Compose
@@ -44,7 +44,7 @@ docker-compose up -d
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/youtubedoc.git
+git clone https://github.com/filiksyos/Youtube-to-Doc.git
 cd youtubedoc
 
 # Install dependencies (using pnpm as specified in requirements)
@@ -110,6 +110,45 @@ cp .env.example .env
 - `YOUTUBE_API_KEY`: Optional YouTube Data API key for enhanced features
 - `OPENAI_API_KEY`: Optional OpenAI API key for AI-enhanced processing
 - `RATE_LIMIT_PER_MINUTE`: Number of requests per minute per IP
+
+### AWS S3 Integration (for cloud documentation links)
+
+To publish generated docs to S3 and show "View Documentation" and "Copy Documentation Link" buttons (as used on `youtubetodoc.com`), configure an S3 bucket and environment variables.
+
+1) Create an S3 bucket
+- Region: choose your region (e.g., eu-north-1)
+- Object Ownership: ACLs disabled (Bucket owner enforced)
+- Public access: turn OFF “Block all public access” if you want public S3 URLs
+
+2) Add a read-only bucket policy (recommended to scope to `docs/`):
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowPublicReadDocs",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET/docs/*"
+    }
+  ]
+}
+```
+
+3) Set environment variables in `.env`:
+```bash
+AWS_S3_BUCKET=YOUR_BUCKET
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=eu-north-1
+```
+
+4) Restart the server so `.env` is reloaded.
+
+Notes
+- The app auto-detects the bucket’s real region to construct the correct URL, avoiding PermanentRedirect.
+- If you prefer not to expose public S3, keep Block Public Access on and serve via CloudFront instead.
 
 ## 📋 Supported YouTube URL Formats
 
