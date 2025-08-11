@@ -182,98 +182,55 @@
     }
   }
 
-  function startSSE(url, retryCount = 0) {
-    const sse = new EventSource(url);
+  function startFakeLoading(url) {
     setStatus('Checking if it\'s cached...');
-    sse.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        console.log('SSE message received:', data); // Debug logging
-        switch (data.status) {
-          case 'connected':
-            setStatus('Connection established...');
-            break;
-          case 'url_validation':
-            setStatus('Validating URL...');
-            break;
-          case 'url_validated':
-            setStatus('URL validated.');
-            break;
-          case 'cache_check':
-            setStatus('Checking cache...');
-            break;
-          case 'cache_miss':
-            setStatus('Not cached, processing...');
-            break;
-          case 'video_metadata':
-            setStatus('Extracting video metadata...');
-            break;
-          case 'video_metadata_done':
-            setStatus('Metadata extracted');
-            break;
-          case 'transcript_processing':
-            setStatus('Processing transcript...');
-            break;
-          case 'transcript_done':
-            setStatus('Transcript processed.');
-            break;
-          case 'transcript_skipped':
-            setStatus('Transcript unavailable, continuing...');
-            break;
-          case 'doc_generation':
-            setStatus('Generating documentation...');
-            break;
-          case 'doc_generated':
-            setStatus('Documentation generated.');
-            break;
-          case 's3_upload':
-            setStatus('Uploading to S3...');
-            break;
-          case 'complete':
-            sse.close();
+    
+    // First check if content is cached by making a quick request
+    fetch(`/api/process?url=${encodeURIComponent(url)}&check_cache_only=true`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.cached && data.content_url) {
+          // Content is cached, show it immediately
+          setTimeout(() => {
             const header = document.getElementById('loading-header');
             if (header) header.remove();
-            
-            // Show cache indicator if from cache
-            if (data.cached) {
-              renderCachedResult(data);
-            } else {
-              renderResultInline(data);
-            }
-            break;
-          case 'error':
-            setStatus('Error: ' + data.error);
-            sse.close();
-            break;
-          default:
-            break;
+            renderCachedResult(data);
+          }, 1000);
+          return;
         }
-      } catch (e) {
-        console.error('Error parsing SSE message:', e, ev.data);
-      }
-    };
-    sse.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      console.log('SSE readyState:', sse.readyState);
-      sse.close();
-      
-      if (retryCount < 2) {
-        setStatus(`Connection error. Retrying... (${retryCount + 1}/2)`);
+        
+        // Not cached, show fake loading sequence
+        const loadingSteps = [
+          { delay: 1000, message: 'Validating URL...' },
+          { delay: 2000, message: 'URL validated.' },
+          { delay: 3000, message: 'Not cached, processing...' },
+          { delay: 4000, message: 'Extracting video metadata...' },
+          { delay: 6000, message: 'Metadata extracted.' },
+          { delay: 7000, message: 'Processing transcript...' },
+          { delay: 9000, message: 'Transcript processed.' },
+          { delay: 10000, message: 'Generating documentation...' },
+          { delay: 12000, message: 'Documentation generated.' },
+          { delay: 13000, message: 'Uploading to cloud...' },
+          { delay: 14000, message: 'Finalizing...' }
+        ];
+        
+        loadingSteps.forEach(step => {
+          setTimeout(() => setStatus(step.message), step.delay);
+        });
+        
+        // Start the actual form submission after initial delay
         setTimeout(() => {
-          console.log('Retrying SSE connection...');
-          startSSE(url, retryCount + 1);
+          form.submit();
         }, 2000);
-      } else {
-        setStatus('Connection failed. Using fallback...');
-        console.log('SSE failed, falling back to form submission');
+        
+      })
+      .catch(error => {
+        console.error('Cache check failed:', error);
+        // Fallback to normal processing
         setTimeout(() => {
           form.submit();
         }, 1000);
-      }
-    };
-    sse.onopen = () => {
-      console.log('SSE connection opened');
-    };
+      });
   }
 
   form.addEventListener('submit', function(e){
@@ -291,31 +248,21 @@
       }
       compactMainCard();
       renderLoadingCard('Generating documentation');
-      const params = new URLSearchParams({
-        url,
-        max_transcript_length: String({{ default_transcript_length|default(10000) }}),
-        include_comments: '{{ include_comments|default(false) }}',
-        language: '{{ language|default("en") }}'
-      });
-      startSSE(`/api/process/stream?${params.toString()}`, 0);
+      startFakeLoading(url);
     } catch (_) {
       // fall back to normal submit
     }
   });
-  // Auto-start SSE on /watch if a URL is prefilled
+  // Auto-start on /watch if a URL is prefilled (but only if no results are already shown)
   document.addEventListener('DOMContentLoaded', function(){
     const isWatchPage = window.location.pathname === '/watch';
     const url = inputEl && inputEl.value ? inputEl.value.trim() : '';
-    if (isWatchPage && url) {
+    const hasResults = document.getElementById('results-section'); // Check if results are already displayed
+    
+    if (isWatchPage && url && !hasResults) {
       compactMainCard();
       renderLoadingCard('Generating documentation');
-      const params = new URLSearchParams({
-        url,
-        max_transcript_length: String({{ default_transcript_length|default(10000) }}),
-        include_comments: '{{ include_comments|default(false) }}',
-        language: '{{ language|default("en") }}'
-      });
-      startSSE(`/api/process/stream?${params.toString()}`, 0);
+      startFakeLoading(url);
     }
   });
 })();

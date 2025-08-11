@@ -69,6 +69,62 @@ async def watch_redirect(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/api/process")
+async def check_process(
+    url: str = Query(..., description="YouTube video URL"),
+    check_cache_only: bool = Query(False, description="Only check cache, don't process"),
+    max_transcript_length: int = Query(10000),
+    include_comments: bool = Query(False),
+    language: str = Query("en"),
+):
+    """Check if video documentation is cached or process it."""
+    
+    # If not checking cache only, return error (this endpoint is for cache checks)
+    if not check_cache_only:
+        return {"error": "This endpoint is for cache checking only"}
+    
+    try:
+        # Validate URL and extract video ID
+        query = VideoQuery(
+            url=url,
+            max_transcript_length=max_transcript_length,
+            include_comments=include_comments,
+            language=language,
+        )
+        video_id = query.extract_video_id()
+        if not video_id:
+            return {"error": "Invalid YouTube URL", "cached": False}
+        
+        # Check cache
+        object_key = f"docs/youtube/{video_id}.md"
+        
+        try:
+            from ...youtubedoc.utils.s3_uploader import check_cached_documentation
+            cached_url = check_cached_documentation(object_key)
+            if cached_url:
+                return {
+                    "cached": True,
+                    "content_url": cached_url,
+                    "video_id": video_id,
+                    "message": "Found in cache"
+                }
+            else:
+                return {
+                    "cached": False,
+                    "video_id": video_id,
+                    "message": "Not cached"
+                }
+        except Exception as exc:
+            return {
+                "cached": False,
+                "video_id": video_id,
+                "message": f"Cache check failed: {exc}"
+            }
+            
+    except Exception as exc:
+        return {"error": f"Invalid URL: {exc}", "cached": False}
+
+
 @router.get("/api/process/stream")
 async def stream_process(
     url: str = Query(..., description="YouTube video URL"),
