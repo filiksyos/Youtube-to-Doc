@@ -74,7 +74,6 @@
               </span>
             </div>
           </div>
-          <div id="result-inline-container" class="mt-4"></div>
         </div>
       </div>`;
   }
@@ -84,279 +83,39 @@
     if (el) el.textContent = text;
   }
 
-  function renderResultInline(data) {
-    const container = document.getElementById('result-inline-container');
-    if (!container) return;
-    if (data.content_url) {
-      container.innerHTML = `
-        <div class="flex flex-wrap justify-center gap-4">
-          <div class="relative inline-block group">
-            <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
-            <a href="${data.content_url}" target="_blank" rel="noopener noreferrer"
-               class="inline-flex items-center px-4 py-2 bg-[#a0e8a0] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
-               View Documentation (Cloud)
-            </a>
-          </div>
-          <div class="relative inline-block group">
-            <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
-            <button type="button" id="inline-copy-link" class="inline-flex items-center px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">Copy Documentation Link</button>
-          </div>
-        </div>`;
-      const copyBtn = document.getElementById('inline-copy-link');
-      if (copyBtn) {
-        copyBtn.addEventListener('click', function(){
-          navigator.clipboard.writeText(String(data.content_url)).catch(()=>{});
-          copyBtn.textContent = 'Copied!';
-          setTimeout(()=>{ copyBtn.textContent = 'Copy Documentation Link'; }, 1500);
-        });
-      }
-    } else if (data.content) {
-      const safeText = data.content;
-      container.innerHTML = `
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-medium text-gray-900">Generated Documentation</h3>
-          <div class="flex space-x-2">
-            <button type="button" id="inline-copy" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Copy</button>
-            <button type="button" id="inline-download" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Download</button>
-          </div>
-        </div>
-        <pre class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm overflow-x-auto whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">${safeText.replace(/</g,'&lt;')}</pre>`;
-      const copyBtn = document.getElementById('inline-copy');
-      const dlBtn = document.getElementById('inline-download');
-      if (copyBtn) copyBtn.addEventListener('click', ()=> navigator.clipboard.writeText(safeText).catch(()=>{}));
-      if (dlBtn) dlBtn.addEventListener('click', ()=>{
-        const blob = new Blob([safeText], { type: 'text/markdown' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'documentation.md';
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a); window.URL.revokeObjectURL(url);
-      });
-    }
-  }
 
-  function renderCachedResult(data) {
-    const container = document.getElementById('result-inline-container');
-    if (!container) return;
-    
-    container.innerHTML = `
-      <div class="flex flex-wrap justify-center gap-4">
-        <div class="relative inline-block group">
-          <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
-          <a href="${data.content_url}" target="_blank" rel="noopener noreferrer"
-             class="inline-flex items-center px-4 py-2 bg-[#a0e8a0] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
-             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-               <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-             </svg>
-             View Documentation (Cloud)
-          </a>
-        </div>
-        <div class="relative inline-block group">
-          <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
-          <button type="button" id="cached-copy-link" class="inline-flex items-center px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-            </svg>
-            Copy Documentation Link
-          </button>
-        </div>
-      </div>`;
-    
-    const copyBtn = document.getElementById('cached-copy-link');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', function(){
-        navigator.clipboard.writeText(String(data.content_url)).catch(()=>{});
-        copyBtn.innerHTML = `
-          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-          </svg>
-          Copied!`;
-        setTimeout(()=>{ 
-          copyBtn.innerHTML = `
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-            </svg>
-            Copy Documentation Link`;
-        }, 1500);
-      });
-    }
-  }
 
-  function startSSE(url, retryCount = 0) {
-    const sse = new EventSource(url);
-    setStatus('Checking if it\'s cached...');
-    let messageReceived = false;
-    
-    // Fallback to polling if no messages received within 3 seconds
-    const fallbackTimeout = setTimeout(() => {
-      if (!messageReceived) {
-        console.log('SSE timeout - no messages received, falling back to polling');
-        sse.close();
-        startPolling(url);
-      }
-    }, 3000);
-    
-    sse.onmessage = (ev) => {
-      try {
-        messageReceived = true;
-        clearTimeout(fallbackTimeout);
-        const data = JSON.parse(ev.data);
-        console.log('SSE message received:', data);
-        handleStatusUpdate(data, sse);
-      } catch (e) {
-        console.error('Error parsing SSE message:', e, ev.data);
-      }
-    };
-    
-    sse.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      sse.close();
-      clearTimeout(fallbackTimeout);
-      
-      if (retryCount < 1) {
-        setStatus(`Connection error. Retrying... (${retryCount + 1}/1)`);
-        setTimeout(() => {
-          startSSE(url, retryCount + 1);
-        }, 2000);
-      } else {
-        console.log('SSE failed, falling back to polling');
-        startPolling(url);
-      }
-    };
-    
-    sse.onopen = () => {
-      console.log('SSE connection opened');
-    };
-  }
 
-  function startPolling(sseUrl) {
-    setStatus('Switching to polling mode...');
+
+  function startCustomLoading() {
+    const loadingMessages = [
+      "Checking if it's cached...",
+      "Validating URL...", 
+      "Extracting video metadata...",
+      "Processing transcript...",
+      "Generating documentation...",
+      "Uploading to cloud storage...",
+      "Almost done...",
+      "Finalizing..."
+    ];
     
-    // Extract URL params from the SSE URL
-    const urlParams = new URLSearchParams(sseUrl.split('?')[1]);
-    const videoUrl = urlParams.get('url');
-    const maxLength = urlParams.get('max_transcript_length');
-    const includeComments = urlParams.get('include_comments');
-    const language = urlParams.get('language');
+    let currentIndex = 0;
+    setStatus(loadingMessages[0]);
     
-    // Start the processing task
-    fetch('/api/process/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `url=${encodeURIComponent(videoUrl)}&max_transcript_length=${maxLength}&include_comments=${includeComments}&language=${language}`
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.error) {
-        setStatus('Error: ' + data.error);
-        return;
-      }
-      
-      const taskId = data.task_id;
-      console.log('Started polling task:', taskId);
-      pollStatus(taskId);
-    })
-    .catch(error => {
-      console.error('Error starting task:', error);
-      setStatus('Error starting task');
-      setTimeout(() => form.submit(), 2000);
-    });
-  }
-  
-  function pollStatus(taskId) {
-    const poll = () => {
-      fetch(`/api/process/status/${taskId}`)
-        .then(response => response.json())
-        .then(data => {
-          console.log('Poll response:', data);
-          handleStatusUpdate(data);
-          
-          if (data.status === 'complete' || data.status === 'error') {
-            return; // Stop polling
-          }
-          
-          setTimeout(poll, 1000); // Poll every second
-        })
-        .catch(error => {
-          console.error('Polling error:', error);
-          setStatus('Polling error');
-          setTimeout(() => form.submit(), 2000);
-        });
-    };
+    const messageInterval = setInterval(() => {
+      currentIndex = (currentIndex + 1) % loadingMessages.length;
+      setStatus(loadingMessages[currentIndex]);
+    }, 2500); // Change message every 2.5 seconds
     
-    poll();
-  }
-  
-  function handleStatusUpdate(data, sse = null) {
-    switch (data.status) {
-      case 'connected':
-        setStatus('Connection established...');
-        break;
-      case 'started':
-        setStatus('Starting...');
-        break;
-      case 'url_validation':
-        setStatus('Validating URL...');
-        break;
-      case 'url_validated':
-        setStatus('URL validated.');
-        break;
-      case 'cache_check':
-        setStatus('Checking cache...');
-        break;
-      case 'cache_miss':
-        setStatus('Not cached, processing...');
-        break;
-      case 'video_metadata':
-        setStatus('Extracting video metadata...');
-        break;
-      case 'video_metadata_done':
-        setStatus('Metadata extracted');
-        break;
-      case 'transcript_processing':
-        setStatus('Processing transcript...');
-        break;
-      case 'transcript_done':
-        setStatus('Transcript processed.');
-        break;
-      case 'transcript_skipped':
-        setStatus('Transcript unavailable, continuing...');
-        break;
-      case 'doc_generation':
-        setStatus('Generating documentation...');
-        break;
-      case 'doc_generated':
-        setStatus('Documentation generated.');
-        break;
-      case 's3_upload':
-        setStatus('Uploading to S3...');
-        break;
-      case 'complete':
-        if (sse) sse.close();
-        const header = document.getElementById('loading-header');
-        if (header) header.remove();
-        
-        if (data.cached) {
-          renderCachedResult(data);
-        } else {
-          renderResultInline(data);
-        }
-        break;
-      case 'error':
-        if (sse) sse.close();
-        setStatus('Error: ' + (data.error || data.message));
-        break;
-      default:
-        break;
-    }
+    // Store interval ID so we can clear it if needed
+    window.loadingInterval = messageInterval;
   }
 
   form.addEventListener('submit', function(e){
-    // Intercept submit to start SSE and show loader
     try {
       const url = inputEl && inputEl.value ? inputEl.value.trim() : '';
       if (!url) return; // allow default handling
-      e.preventDefault();
+      
       // If we are on the home page, navigate to /watch?v=... first
       const isWatchPage = window.location.pathname === '/watch';
       const videoId = (function(){ try { return extractVideoId(url); } catch(_) { return null; } })();
@@ -364,33 +123,38 @@
         window.location.href = `/watch?v=${videoId}`;
         return;
       }
+      
+      // Show loading animation and submit form normally
       compactMainCard();
       renderLoadingCard('Generating documentation');
-      const params = new URLSearchParams({
-        url,
-        max_transcript_length: String({{ default_transcript_length|default(10000) }}),
-        include_comments: '{{ include_comments|default(false) }}',
-        language: '{{ language|default("en") }}'
-      });
-      startSSE(`/api/process/stream?${params.toString()}`, 0);
+      startCustomLoading();
+      
+      // Let form submit normally - no preventDefault
     } catch (_) {
-      // fall back to normal submit
+      // Normal form submission will happen
     }
   });
-  // Auto-start SSE on /watch if a URL is prefilled
+  
+  // Auto-start loading on /watch if a URL is prefilled
   document.addEventListener('DOMContentLoaded', function(){
     const isWatchPage = window.location.pathname === '/watch';
     const url = inputEl && inputEl.value ? inputEl.value.trim() : '';
     if (isWatchPage && url) {
       compactMainCard();
       renderLoadingCard('Generating documentation');
-      const params = new URLSearchParams({
-        url,
-        max_transcript_length: String({{ default_transcript_length|default(10000) }}),
-        include_comments: '{{ include_comments|default(false) }}',
-        language: '{{ language|default("en") }}'
-      });
-      startSSE(`/api/process/stream?${params.toString()}`, 0);
+      startCustomLoading();
+      
+      // Auto-submit the form
+      setTimeout(() => {
+        form.submit();
+      }, 100);
+    }
+  });
+  
+  // Clean up intervals when page unloads
+  window.addEventListener('beforeunload', function() {
+    if (window.loadingInterval) {
+      clearInterval(window.loadingInterval);
     }
   });
 })();
