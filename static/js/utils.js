@@ -209,6 +209,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeFormValidation();
     initializeMobileMenu();
     initializeCopyFeature();
+
+    // Auto-scroll to results when present
+    const results = document.querySelector('[data-results]') || document.getElementById('results-section');
+    if (results) {
+        setTimeout(() => results.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
 });
 
 // Export functions for global use

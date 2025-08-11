@@ -1,94 +1,60 @@
 {% if result %}
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-6">
-    <!-- Video Information Header -->
-    {% if video_info %}
-    <div class="mb-6 pb-4 border-b border-gray-200">
-        <div class="flex items-start space-x-4">
-            {% if video_info.thumbnail_url %}
-            <img 
-                src="{{ video_info.thumbnail_url }}" 
-                alt="Video thumbnail" 
-                class="w-32 h-24 object-cover rounded-lg flex-shrink-0"
-                onerror="this.style.display='none'"
-            >
-            {% endif %}
-            
-            <div class="flex-1 min-w-0">
-                <h2 class="text-xl font-bold text-gray-900 mb-2">{{ video_info.title or 'Untitled Video' }}</h2>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
-                    <div>
-                        <span class="font-medium">Duration:</span> 
-                        {% if video_info.duration %}
-                            {% set hours = video_info.duration // 3600 %}
-                            {% set minutes = (video_info.duration % 3600) // 60 %}
-                            {% set seconds = video_info.duration % 60 %}
-                            {% if hours > 0 %}{{ hours }}h {% endif %}{{ minutes }}m {{ seconds }}s
-                        {% else %}
-                            Unknown
-                        {% endif %}
-                    </div>
-                    <div>
-                        <span class="font-medium">Channel:</span> {{ video_info.channel or 'Unknown' }}
-                    </div>
-                    <div>
-                        <span class="font-medium">Views:</span> 
-                        {% if video_info.view_count %}
-                            {{ "{:,}".format(video_info.view_count) }}
-                        {% else %}
-                            Unknown
-                        {% endif %}
-                    </div>
-                    <div>
-                        <span class="font-medium">Upload Date:</span> {{ video_info.upload_date or 'Unknown' }}
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
+<div id="results-section" data-results class="mt-6">
+    <div class="relative">
+        <div class="w-full h-full absolute inset-0 bg-gray-900 rounded-xl translate-y-2 translate-x-2"></div>
+        <div class="rounded-xl relative z-20 p-6 border-[3px] border-gray-900 bg-[#fff4da]">
 
     <!-- Content Display -->
     <div class="space-y-4">
-        <div class="flex items-center justify-between">
-            <h3 class="text-lg font-medium text-gray-900">Generated Documentation</h3>
-            <div class="flex space-x-2">
-                <button 
-                    onclick="copyToClipboard()"
-                    class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                >
-                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                    </svg>
-                    Copy
-                </button>
-                <button 
-                    onclick="downloadContent()"
-                    class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                >
-                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    Download
-                </button>
-            </div>
-        </div>
+        {% if content_url %}
+            <!-- Cloud-only buttons (copied UI style from filiksyos/gittodoc) -->
+            <div class="flex flex-wrap justify-center gap-4">
+                <input type="hidden" id="documentation-url" value="{{ content_url }}" />
 
-        <!-- Content area -->
-        <div class="relative">
-            <pre id="content-area" class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm overflow-x-auto whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">{{ content or 'No content available.' }}</pre>
-            
-            {% if content_url %}
-            <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div class="flex items-center">
-                    <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
-                    </svg>
-                    <span class="text-blue-800 font-medium">Full content available via cloud storage:</span>
+                <div class="relative inline-block group">
+                    <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                    <a href="{{ content_url }}" target="_blank" rel="noopener noreferrer"
+                       class="inline-flex items-center px-4 py-2 bg-[#a0e8a0] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        View Documentation (Cloud)
+                    </a>
                 </div>
-                <a href="{{ content_url }}" target="_blank" class="text-blue-600 hover:text-blue-800 underline break-all">{{ content_url }}</a>
+
+                <div class="relative inline-block group">
+                    <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+                    <button id="copy-doc-link-btn" onclick="copyDocumentationLink()"
+                            class="inline-flex items-center px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                        </svg>
+                        Copy Documentation Link
+                    </button>
+                </div>
             </div>
-            {% endif %}
-        </div>
+        {% else %}
+            <!-- Local preview fallback (only shown if upload failed) -->
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-medium text-gray-900">Generated Documentation</h3>
+                <div class="flex space-x-2">
+                    <button 
+                        onclick="copyToClipboard()"
+                        class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        Copy
+                    </button>
+                    <button 
+                        onclick="downloadContent()"
+                        class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        Download
+                    </button>
+                </div>
+            </div>
+
+            <div class="relative">
+                <pre id="content-area" class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm overflow-x-auto whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">{{ content or 'No content available.' }}</pre>
+            </div>
+        {% endif %}
 
         <!-- Summary Statistics -->
         {% if summary %}
@@ -99,31 +65,39 @@
             </div>
         </div>
         {% endif %}
+        </div>
     </div>
 </div>
 
 <script>
+// Ensure we auto-scroll to the results like in filiksyos/gittodoc
+document.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('results-section');
+    if (el) {
+        setTimeout(function(){ el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 0);
+    }
+});
+
+function copyDocumentationLink() {
+    const contentUrl = document.getElementById('documentation-url').value;
+    if (!contentUrl) return;
+    const button = document.getElementById('copy-doc-link-btn');
+    const originalText = button.innerHTML;
+    navigator.clipboard.writeText(contentUrl).then(() => {
+        button.innerHTML = 'Copied!';
+        setTimeout(() => { button.innerHTML = originalText; }, 1500);
+    });
+}
+
 function copyToClipboard() {
     const content = document.getElementById('content-area').textContent;
-    navigator.clipboard.writeText(content).then(function() {
-        // Show success message
-        const button = event.target.closest('button');
-        const originalText = button.innerHTML;
-        button.innerHTML = '<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Copied!';
-        setTimeout(() => {
-            button.innerHTML = originalText;
-        }, 2000);
-    }).catch(function(err) {
-        console.error('Failed to copy: ', err);
-        alert('Failed to copy content to clipboard');
-    });
+    navigator.clipboard.writeText(content).catch(() => {});
 }
 
 function downloadContent() {
     const content = document.getElementById('content-area').textContent;
     const videoTitle = '{{ video_info.title if video_info else "youtube_video" }}';
     const filename = `${videoTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_documentation.md`;
-    
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -136,4 +110,4 @@ function downloadContent() {
     document.body.removeChild(a);
 }
 </script>
-{% endif %} 
+{% endif %}

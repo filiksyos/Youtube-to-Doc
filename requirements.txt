@@ -16,3 +16,4 @@ youtube-transcript-api
 yt-dlp
 pytube
 openai 
+boto3

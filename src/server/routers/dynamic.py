@@ -41,6 +41,51 @@ async def video_page(request: Request, video_id: str) -> HTMLResponse:
     )
 
 
+@router.get("/watch", response_class=HTMLResponse)
+async def watch_redirect(request: Request) -> HTMLResponse:
+    """
+    Support YouTube-style watch endpoint: /watch?v=VIDEO_ID
+    Auto-processes the video to show documentation immediately.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    query = parse_qs(urlparse(str(request.url)).query)
+    video_id = (query.get("v") or [None])[0]
+    video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
+
+    # Enforce full transcript in English without comments
+    MAX_INT = 10_000_000
+    return await process_query(
+        request,
+        video_url,
+        MAX_INT,
+        False,
+        "en",
+        is_index=False,
+    )
+
+
+@router.post("/watch", response_class=HTMLResponse)
+@limiter.limit("5/minute")
+async def process_watch(
+    request: Request,
+    input_text: str = Form(...),
+) -> HTMLResponse:
+    """
+    Handle form submission from /watch page to generate documentation.
+    """
+    # Enforce full transcript in English without comments
+    MAX_INT = 10_000_000
+    return await process_query(
+        request,
+        input_text,
+        MAX_INT,
+        False,
+        "en",
+        is_index=False,
+    )
+
+
 @router.post("/video/{video_id}", response_class=HTMLResponse)
 @limiter.limit("5/minute")
 async def process_video(

@@ -8,8 +8,11 @@ from starlette.templating import _TemplateResponse
 
 from ..youtubedoc.youtube_processor import YoutubeProcessor
 from ..youtubedoc.schemas.video_schema import VideoQuery
+from ..youtubedoc.utils.s3_uploader import upload_markdown_to_s3
 from .server_config import EXAMPLE_VIDEOS, MAX_DISPLAY_SIZE, templates
 from .server_utils import Colors
+import os
+from urllib.parse import urlparse, parse_qs
 
 
 async def process_query(
@@ -57,6 +60,7 @@ async def process_query(
         "include_comments": include_comments,
         "language": language,
         "content": None,
+        "content_url": None,
         "error_message": None,
         "result": False,
     }
@@ -80,16 +84,28 @@ async def process_query(
         if transcript is None:
             print("WARNING: No transcript was extracted - checking reasons...")
         
-        # Generate documentation content
-        content = _generate_documentation(video_info, transcript, comments, include_comments)
+        # Generate documentation content (markdown)
+        content_md = _generate_documentation(video_info, transcript, comments, include_comments)
 
-        if len(content) > MAX_DISPLAY_SIZE:
-            content = (
-                f"(Content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters, "
-                "full content available via API)\n" + content[:MAX_DISPLAY_SIZE]
-            )
+        # Compute object key: docs/youtube/{video_id}.md
+        video_id = video_info.get("video_id") or _extract_video_id_from_url(input_text)
+        object_key = f"docs/youtube/{video_id}.md" if video_id else f"docs/youtube/unknown.md"
 
-        context["content"] = content
+        # Upload to S3; return URL or None
+        content_url = upload_markdown_to_s3(content_md, object_key)
+
+        # If uploaded, hide local content and expose buttons
+        if content_url:
+            context["content_url"] = content_url
+            context["content"] = None
+        else:
+            # Keep local content visible if upload fails (simple behavior)
+            if len(content_md) > MAX_DISPLAY_SIZE:
+                content_md = (
+                    f"(Content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters)\n" + content_md[:MAX_DISPLAY_SIZE]
+                )
+            context["content"] = content_md
+
         context["video_info"] = video_info
         context["result"] = True
 
@@ -114,6 +130,18 @@ async def process_query(
             )
 
     return template_response(context=context)
+
+
+def _extract_video_id_from_url(url: str) -> Optional[str]:
+    try:
+        parsed = urlparse(url)
+        if parsed.netloc.endswith("youtube.com") and parsed.path == "/watch":
+            return parse_qs(parsed.query).get("v", [None])[0]
+        if parsed.netloc == "youtu.be":
+            return parsed.path.lstrip("/") or None
+    except Exception:
+        return None
+    return None
 
 
 def _generate_documentation(
