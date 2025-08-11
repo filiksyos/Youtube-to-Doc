@@ -16,6 +16,13 @@ except ImportError:
     YouTubeTranscriptApi = None
     TextFormatter = None
 
+# Optional proxy support (recommended for cloud deployments)
+try:
+    from youtube_transcript_api.proxies import WebshareProxyConfig, GenericProxyConfig
+except Exception:
+    WebshareProxyConfig = None
+    GenericProxyConfig = None
+
 try:
     import yt_dlp
 except ImportError:
@@ -40,6 +47,8 @@ class YoutubeProcessor:
         self.text_formatter = TextFormatter() if TextFormatter else None
         self.youtube_api_key = os.getenv("YOUTUBE_API_KEY")
         self._check_dependencies()
+        # Detect proxy-related env at startup for better logs
+        self._log_proxy_env_state()
     
     def _check_dependencies(self):
         """Check if required dependencies are available."""
@@ -64,6 +73,82 @@ class YoutubeProcessor:
             print("WARNING: pytube not imported - video info extraction limited")
         else:
             print("SUCCESS: pytube imported successfully")
+
+        if WebshareProxyConfig is None and GenericProxyConfig is None:
+            print("INFO: youtube-transcript-api proxy helpers not available (optional)")
+        else:
+            print("SUCCESS: youtube-transcript-api proxy helpers available (optional)")
+
+    def _log_proxy_env_state(self) -> None:
+        """Log a brief summary of proxy env configuration (without secrets)."""
+        try:
+            has_webshare_user = bool(os.getenv("YTA_WEBSHARE_USERNAME"))
+            has_webshare_pass = bool(os.getenv("YTA_WEBSHARE_PASSWORD"))
+            http_proxy = os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
+            https_proxy = os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY")
+            if has_webshare_user and has_webshare_pass:
+                print("INFO: Webshare proxy credentials detected via env (YTA_WEBSHARE_*)")
+            elif http_proxy or https_proxy:
+                print("INFO: Generic proxy URLs detected via env (HTTP(S)_PROXY / YTA_HTTP(S)_PROXY)")
+            else:
+                print("INFO: No proxy env detected. Requests will go direct (may be blocked on cloud)")
+        except Exception:
+            # Best-effort logging only
+            pass
+
+    def _get_proxy_config(self):
+        """Build an optional ProxyConfig for youtube-transcript-api from env.
+
+        Supported env:
+          - YTA_WEBSHARE_USERNAME, YTA_WEBSHARE_PASSWORD, YTA_WEBSHARE_LOCATIONS (optional csv)
+          - YTA_HTTP_PROXY / YTA_HTTPS_PROXY (fallback to HTTP_PROXY / HTTPS_PROXY)
+        """
+        # Prefer Webshare rotating residential proxies if configured
+        ws_username = os.getenv("YTA_WEBSHARE_USERNAME")
+        ws_password = os.getenv("YTA_WEBSHARE_PASSWORD")
+        ws_locations_raw = os.getenv("YTA_WEBSHARE_LOCATIONS")
+        ws_locations = (
+            [loc.strip() for loc in ws_locations_raw.split(",") if loc.strip()]
+            if ws_locations_raw
+            else None
+        )
+
+        if WebshareProxyConfig and ws_username and ws_password:
+            try:
+                print("INFO: Initializing WebshareProxyConfig for youtube-transcript-api")
+                return WebshareProxyConfig(
+                    proxy_username=ws_username,
+                    proxy_password=ws_password,
+                    filter_ip_locations=ws_locations,
+                )
+            except Exception as e:
+                print(f"WARN: Failed to create WebshareProxyConfig: {e}")
+
+        # Fallback: generic proxy URLs
+        http_proxy = os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
+        https_proxy = os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY")
+        if GenericProxyConfig and (http_proxy or https_proxy):
+            try:
+                print("INFO: Initializing GenericProxyConfig for youtube-transcript-api")
+                return GenericProxyConfig(
+                    http_url=http_proxy,
+                    https_url=https_proxy,
+                )
+            except Exception as e:
+                print(f"WARN: Failed to create GenericProxyConfig: {e}")
+
+        return None
+
+    def _build_ytt_api(self) -> Any:
+        """Create a YouTubeTranscriptApi instance with optional proxy config.
+
+        Returns Any to avoid runtime type issues when the optional import is unavailable
+        at type-check time in some environments.
+        """
+        proxy_config = self._get_proxy_config()
+        if proxy_config is not None:
+            return YouTubeTranscriptApi(proxy_config=proxy_config)
+        return YouTubeTranscriptApi()
     
     async def process_video(
         self, 
@@ -143,10 +228,15 @@ class YoutubeProcessor:
     async def _get_video_info_yt_dlp(self, video_id: str, url: str) -> Dict[str, Any]:
         """Extract video info using yt-dlp."""
         def extract_info():
+            # Try to use the same proxy as transcripts if available
+            http_proxy = os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY") or \
+                         os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
                 'extract_flat': False,
+                # yt-dlp accepts a single proxy URL string
+                **({'proxy': http_proxy} if http_proxy else {}),
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -169,7 +259,17 @@ class YoutubeProcessor:
     async def _get_video_info_pytube(self, url: str) -> Dict[str, Any]:
         """Extract video info using pytube."""
         def extract_info():
-            yt = YouTube(url)
+            # Pytube can accept proxies dict similar to requests
+            proxies = None
+            http_proxy = os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
+            https_proxy = os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY")
+            if http_proxy or https_proxy:
+                proxies = {}
+                if http_proxy:
+                    proxies['http'] = http_proxy
+                if https_proxy:
+                    proxies['https'] = https_proxy
+            yt = YouTube(url, proxies=proxies) if proxies else YouTube(url)
             return {
                 "title": yt.title,
                 "description": yt.description,
@@ -222,9 +322,8 @@ class YoutubeProcessor:
         def extract_transcript():
             try:
                 print(f"DEBUG: Creating YouTubeTranscriptApi instance...")
-                
-                # Create an instance of YouTubeTranscriptApi (correct usage pattern)
-                ytt_api = YouTubeTranscriptApi()
+                # Create an instance of YouTubeTranscriptApi with optional proxy support
+                ytt_api = self._build_ytt_api()
                 print(f"DEBUG: Available methods on ytt_api instance: {[method for method in dir(ytt_api) if not method.startswith('_')]}")
                 
                 # Try the direct fetch method first (current API)

@@ -147,8 +147,39 @@ AWS_REGION=eu-north-1
 4) Restart the server so `.env` is reloaded.
 
 Notes
-- The app auto-detects the bucket’s real region to construct the correct URL, avoiding PermanentRedirect.
+- The app auto-detects the bucket's real region to construct the correct URL, avoiding PermanentRedirect.
 - If you prefer not to expose public S3, keep Block Public Access on and serve via CloudFront instead.
+
+### Proxy Configuration (Cloud Deployment Only)
+
+**⚠️ Note: This is only needed for cloud deployment (Render, Heroku, AWS, etc.). Local development works without proxies.**
+
+When deploying to cloud providers, YouTube often blocks requests from cloud IPs, causing `IpBlocked` or `RequestBlocked` errors. To fix this, configure rotating residential proxies:
+
+1) **Sign up for Webshare** (recommended by `youtube-transcript-api`):
+   - Visit [webshare.io](https://www.webshare.io) and create an account
+   - Purchase a "Rotating Residential" plan (NOT "Proxy Server" or "Static Residential")
+   - Go to Proxies → Rotating Residential → Proxy Settings to get your credentials
+
+2) **Set environment variables** in your deployment:
+```bash
+# Webshare credentials (base username/password)
+YTA_WEBSHARE_USERNAME=your_webshare_username
+YTA_WEBSHARE_PASSWORD=your_webshare_password
+YTA_WEBSHARE_LOCATIONS=jp,kr,tw  # optional: filter by countries
+
+# Proxy URLs for yt-dlp/pytube (use specific pod usernames from your proxy list)
+YTA_HTTP_PROXY=http://your_pod_username:your_password@p.webshare.io:80
+YTA_HTTPS_PROXY=http://your_pod_username:your_password@p.webshare.io:80
+```
+
+3) **Alternative**: Use any HTTP/HTTPS proxy provider:
+```bash
+YTA_HTTP_PROXY=http://user:pass@proxy-host:port
+YTA_HTTPS_PROXY=https://user:pass@proxy-host:port
+```
+
+The app will automatically route YouTube API calls through the proxy when these variables are set.
 
 ## 📋 Supported YouTube URL Formats
 
