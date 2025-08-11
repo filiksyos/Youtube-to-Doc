@@ -182,13 +182,17 @@
     }
   }
 
-  function startSSE(url) {
+  function startSSE(url, retryCount = 0) {
     const sse = new EventSource(url);
     setStatus('Checking if it\'s cached...');
     sse.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data);
+        console.log('SSE message received:', data); // Debug logging
         switch (data.status) {
+          case 'connected':
+            setStatus('Connection established...');
+            break;
           case 'url_validation':
             setStatus('Validating URL...');
             break;
@@ -244,12 +248,31 @@
           default:
             break;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Error parsing SSE message:', e, ev.data);
+      }
     };
-    sse.onerror = () => {
-      appendMessage('Connection lost. Falling back.');
+    sse.onerror = (error) => {
+      console.error('SSE connection error:', error);
+      console.log('SSE readyState:', sse.readyState);
       sse.close();
-      form.submit();
+      
+      if (retryCount < 2) {
+        setStatus(`Connection error. Retrying... (${retryCount + 1}/2)`);
+        setTimeout(() => {
+          console.log('Retrying SSE connection...');
+          startSSE(url, retryCount + 1);
+        }, 2000);
+      } else {
+        setStatus('Connection failed. Using fallback...');
+        console.log('SSE failed, falling back to form submission');
+        setTimeout(() => {
+          form.submit();
+        }, 1000);
+      }
+    };
+    sse.onopen = () => {
+      console.log('SSE connection opened');
     };
   }
 
@@ -274,7 +297,7 @@
         include_comments: '{{ include_comments|default(false) }}',
         language: '{{ language|default("en") }}'
       });
-      startSSE(`/api/process/stream?${params.toString()}`);
+      startSSE(`/api/process/stream?${params.toString()}`, 0);
     } catch (_) {
       // fall back to normal submit
     }
@@ -292,7 +315,7 @@
         include_comments: '{{ include_comments|default(false) }}',
         language: '{{ language|default("en") }}'
       });
-      startSSE(`/api/process/stream?${params.toString()}`);
+      startSSE(`/api/process/stream?${params.toString()}`, 0);
     }
   });
 })();

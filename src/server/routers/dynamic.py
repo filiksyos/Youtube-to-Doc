@@ -79,13 +79,19 @@ async def stream_process(
     """Server-Sent Events stream for processing a video with step-wise updates."""
 
     async def event_generator():
+        import asyncio
+        
         def sse(data: dict) -> str:
             import json
-
             return f"data: {json.dumps(data)}\n\n"
+        
+        # Send initial connection event to establish stream
+        yield sse({"status": "connected", "message": "Connection established"})
+        await asyncio.sleep(0.1)  # Small delay to prevent buffering
 
         # Step 0: URL validation
         yield sse({"status": "url_validation", "message": "Validating URL..."})
+        await asyncio.sleep(0.1)
         try:
             query = VideoQuery(
                 url=url,
@@ -109,6 +115,7 @@ async def stream_process(
 
         # Step 1: Cache check
         yield sse({"status": "cache_check", "message": "Checking cache..."})
+        await asyncio.sleep(0.1)
         object_key = f"docs/youtube/{video_id}.md"
         
         try:
@@ -230,7 +237,13 @@ async def stream_process(
             yield sse({"status": "error", "error": f"Upload error: {exc}"})
             return
 
-    headers = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # Disable nginx buffering
+        "Content-Encoding": "identity",  # Disable compression
+        "Transfer-Encoding": "chunked"
+    }
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
