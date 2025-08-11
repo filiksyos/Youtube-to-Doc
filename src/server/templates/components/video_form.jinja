@@ -1,7 +1,7 @@
-<div class="relative">
+<div class="relative" id="main-card">
     <div class="w-full h-full absolute inset-0 bg-gray-900 rounded-xl translate-y-2 translate-x-2"></div>
     <div class="rounded-xl relative z-20 pl-8 sm:pl-10 pr-8 sm:pr-16 py-8 border-[3px] border-gray-900 bg-[#fff4da]">
-        <form method="post" class="flex md:flex-row flex-col w-full h-full justify-center items-stretch space-y-5 md:space-y-0 md:space-x-5">
+        <form id="doc-form" method="post" class="flex md:flex-row flex-col w-full h-full justify-center items-stretch space-y-5 md:space-y-0 md:space-x-5">
             <div class="relative w-full h-full">
                 <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
                 <input
@@ -17,25 +17,232 @@
 
             <div class="relative w-auto flex-shrink-0 h-full group">
                 <div class="w-full h-full rounded bg-gray-800 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
-                <button type="submit"
+                <button type="submit" id="create-docs-btn"
                         class="py-3.5 rounded px-6 group-hover:-translate-y-px group-hover:-translate-x-px ease-out duration-300 z-20 relative w-full border-[3px] border-gray-900 font-medium bg-[#ff6b6b] tracking-wide text-lg flex-shrink-0 text-white inline-flex items-center justify-center gap-2">
                     Create Docs
                 </button>
             </div>
         </form>
-
-        {% if show_examples and examples %}
-            <div class="mt-4">
-                <p class="opacity-70 mb-1">Try these example videos:</p>
-                <div class="flex flex-wrap gap-2">
-                    {% for example in examples %}
-                        <button onclick="submitExample('{{ example.url }}')"
-                                class="px-4 py-1 bg-[#EBDBB7] hover:bg-[#FFC480] text-gray-900 rounded transition-colors duration-200 border-[3px] border-gray-900 relative hover:-translate-y-px hover:-translate-x-px">
-                            {{ example.name }}
-                        </button>
-                    {% endfor %}
+        <div id="examples-section">
+            {% if show_examples and examples %}
+                <div class="mt-4">
+                    <p class="opacity-70 mb-1">Try these example videos:</p>
+                    <div class="flex flex-wrap gap-2">
+                        {% for example in examples %}
+                            <button onclick="submitExample('{{ example.url }}')"
+                                    class="px-4 py-1 bg-[#EBDBB7] hover:bg-[#FFC480] text-gray-900 rounded transition-colors duration-200 border-[3px] border-gray-900 relative hover:-translate-y-px hover:-translate-x-px">
+                                {{ example.name }}
+                            </button>
+                        {% endfor %}
+                    </div>
                 </div>
-            </div>
-        {% endif %}
+            {% endif %}
+        </div>
     </div>
 </div>
+
+<!-- Loading card placeholder -->
+<div id="loading-card-container" class="mt-4"></div>
+<script>
+(function(){
+  const form = document.getElementById('doc-form');
+  if (!form) return;
+
+  const examplesSection = document.getElementById('examples-section');
+  const loadingContainer = document.getElementById('loading-card-container');
+  const inputEl = document.getElementById('input_text');
+  const btn = document.getElementById('create-docs-btn');
+
+  function compactMainCard() {
+    if (examplesSection) {
+      examplesSection.style.display = 'none';
+    }
+  }
+
+  function renderLoadingCard(initialMessage) {
+    loadingContainer.innerHTML = `
+      <div class="relative">
+        <div class="w-full h-full absolute inset-0 bg-gray-900 rounded-xl translate-y-2 translate-x-2"></div>
+        <div class="rounded-xl relative z-20 p-6 border-[3px] border-gray-900 bg-[#fff4da]">
+          <div id="loading-header" class="flex items-center justify-between">
+            <div id="loading-title-text" class="text-gray-900 font-medium">Generating...</div>
+            <div class="flex gap-1 items-center">
+              <span class="inline-flex gap-1">
+                <span class="dot dot-1"></span>
+                <span class="dot dot-2"></span>
+                <span class="dot dot-3"></span>
+              </span>
+            </div>
+          </div>
+          <div id="result-inline-container" class="mt-4"></div>
+        </div>
+      </div>`;
+  }
+
+  function setStatus(text) {
+    const el = document.getElementById('loading-title-text');
+    if (el) el.textContent = text;
+  }
+
+  function renderResultInline(data) {
+    const container = document.getElementById('result-inline-container');
+    if (!container) return;
+    if (data.content_url) {
+      container.innerHTML = `
+        <div class="flex flex-wrap justify-center gap-4">
+          <div class="relative inline-block group">
+            <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+            <a href="${data.content_url}" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center px-4 py-2 bg-[#a0e8a0] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
+               View Documentation (Cloud)
+            </a>
+          </div>
+          <div class="relative inline-block group">
+            <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+            <button type="button" id="inline-copy-link" class="inline-flex items-center px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">Copy Documentation Link</button>
+          </div>
+        </div>`;
+      const copyBtn = document.getElementById('inline-copy-link');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', function(){
+          navigator.clipboard.writeText(String(data.content_url)).catch(()=>{});
+          copyBtn.textContent = 'Copied!';
+          setTimeout(()=>{ copyBtn.textContent = 'Copy Documentation Link'; }, 1500);
+        });
+      }
+    } else if (data.content) {
+      const safeText = data.content;
+      container.innerHTML = `
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-medium text-gray-900">Generated Documentation</h3>
+          <div class="flex space-x-2">
+            <button type="button" id="inline-copy" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Copy</button>
+            <button type="button" id="inline-download" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Download</button>
+          </div>
+        </div>
+        <pre class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm overflow-x-auto whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">${safeText.replace(/</g,'&lt;')}</pre>`;
+      const copyBtn = document.getElementById('inline-copy');
+      const dlBtn = document.getElementById('inline-download');
+      if (copyBtn) copyBtn.addEventListener('click', ()=> navigator.clipboard.writeText(safeText).catch(()=>{}));
+      if (dlBtn) dlBtn.addEventListener('click', ()=>{
+        const blob = new Blob([safeText], { type: 'text/markdown' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'documentation.md';
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); window.URL.revokeObjectURL(url);
+      });
+    }
+  }
+
+  function startSSE(url) {
+    const sse = new EventSource(url);
+    setStatus('Checking if it\'s cached...');
+    sse.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        switch (data.status) {
+          case 'url_validation':
+            setStatus('Validating URL...');
+            break;
+          case 'url_validated':
+            setStatus('URL validated.');
+            break;
+          case 'video_metadata':
+            setStatus('Extracting video metadata...');
+            break;
+          case 'video_metadata_done':
+            setStatus('Metadata extracted');
+            break;
+          case 'transcript_processing':
+            setStatus('Processing transcript...');
+            break;
+          case 'transcript_done':
+            setStatus('Transcript processed.');
+            break;
+          case 'transcript_skipped':
+            setStatus('Transcript unavailable, continuing...');
+            break;
+          case 'doc_generation':
+            setStatus('Generating documentation...');
+            break;
+          case 'doc_generated':
+            setStatus('Documentation generated.');
+            break;
+          case 's3_upload':
+            setStatus('Uploading to S3...');
+            break;
+          case 'complete':
+            sse.close();
+            const header = document.getElementById('loading-header');
+            if (header) header.remove();
+            renderResultInline(data);
+            break;
+          case 'error':
+            setStatus('Error: ' + data.error);
+            sse.close();
+            break;
+          default:
+            break;
+        }
+      } catch (e) {}
+    };
+    sse.onerror = () => {
+      appendMessage('Connection lost. Falling back.');
+      sse.close();
+      form.submit();
+    };
+  }
+
+  form.addEventListener('submit', function(e){
+    // Intercept submit to start SSE and show loader
+    try {
+      const url = inputEl && inputEl.value ? inputEl.value.trim() : '';
+      if (!url) return; // allow default handling
+      e.preventDefault();
+      // If we are on the home page, navigate to /watch?v=... first
+      const isWatchPage = window.location.pathname === '/watch';
+      const videoId = (function(){ try { return extractVideoId(url); } catch(_) { return null; } })();
+      if (!isWatchPage && videoId) {
+        window.location.href = `/watch?v=${videoId}`;
+        return;
+      }
+      compactMainCard();
+      renderLoadingCard('Generating documentation');
+      const params = new URLSearchParams({
+        url,
+        max_transcript_length: String({{ default_transcript_length|default(10000) }}),
+        include_comments: '{{ include_comments|default(false) }}',
+        language: '{{ language|default("en") }}'
+      });
+      startSSE(`/api/process/stream?${params.toString()}`);
+    } catch (_) {
+      // fall back to normal submit
+    }
+  });
+  // Auto-start SSE on /watch if a URL is prefilled
+  document.addEventListener('DOMContentLoaded', function(){
+    const isWatchPage = window.location.pathname === '/watch';
+    const url = inputEl && inputEl.value ? inputEl.value.trim() : '';
+    if (isWatchPage && url) {
+      compactMainCard();
+      renderLoadingCard('Generating documentation');
+      const params = new URLSearchParams({
+        url,
+        max_transcript_length: String({{ default_transcript_length|default(10000) }}),
+        include_comments: '{{ include_comments|default(false) }}',
+        language: '{{ language|default("en") }}'
+      });
+      startSSE(`/api/process/stream?${params.toString()}`);
+    }
+  });
+})();
+</script>
+
+<style>
+.dot { display:inline-block; width:6px; height:6px; border-radius:9999px; background:#7c3aed; opacity:.25; }
+.dot-1 { animation: dotfade 1.2s infinite; }
+.dot-2 { animation: dotfade 1.2s .2s infinite; }
+.dot-3 { animation: dotfade 1.2s .4s infinite; }
+@keyframes dotfade { 0%, 100% { opacity:.2 } 50% { opacity:1 } }
+</style>

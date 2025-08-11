@@ -1,10 +1,12 @@
 """This module defines the FastAPI router for dynamic YouTube video processing."""
 
-from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Request, Form, Query
+from fastapi.responses import HTMLResponse, StreamingResponse
 
-from ..query_processor import process_query
+from ..query_processor import process_query, _generate_documentation, _extract_video_id_from_url
 from ..server_utils import limiter
+from ...youtubedoc.youtube_processor import YoutubeProcessor
+from ...youtubedoc.schemas.video_schema import VideoQuery
 
 router = APIRouter()
 
@@ -45,24 +47,170 @@ async def video_page(request: Request, video_id: str) -> HTMLResponse:
 async def watch_redirect(request: Request) -> HTMLResponse:
     """
     Support YouTube-style watch endpoint: /watch?v=VIDEO_ID
-    Auto-processes the video to show documentation immediately.
+    Render the video page with URL prefilled; client will handle SSE processing.
     """
     from urllib.parse import parse_qs, urlparse
+    from ..server_config import templates
 
     query = parse_qs(urlparse(str(request.url)).query)
     video_id = (query.get("v") or [None])[0]
     video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
 
-    # Enforce full transcript in English without comments
-    MAX_INT = 10_000_000
-    return await process_query(
-        request,
-        video_url,
-        MAX_INT,
-        False,
-        "en",
-        is_index=False,
+    return templates.TemplateResponse(
+        "video.jinja",
+        {
+            "request": request,
+            "video_url": video_url,
+            "video_id": video_id or "",
+            "default_transcript_length": 10_000_000,
+            "include_comments": False,
+            "language": "en",
+        },
     )
+
+
+@router.get("/api/process/stream")
+async def stream_process(
+    url: str = Query(..., description="YouTube video URL"),
+    max_transcript_length: int = Query(10000),
+    include_comments: bool = Query(False),
+    language: str = Query("en"),
+):
+    """Server-Sent Events stream for processing a video with step-wise updates."""
+
+    async def event_generator():
+        def sse(data: dict) -> str:
+            import json
+
+            return f"data: {json.dumps(data)}\n\n"
+
+        # Step 0: URL validation
+        yield sse({"status": "url_validation", "message": "Validating URL..."})
+        try:
+            query = VideoQuery(
+                url=url,
+                max_transcript_length=max_transcript_length,
+                include_comments=include_comments,
+                language=language,
+            )
+            video_id = query.extract_video_id()
+            if not video_id:
+                raise ValueError("Invalid YouTube URL")
+            yield sse(
+                {
+                    "status": "url_validated",
+                    "message": "URL validated",
+                    "video_id": video_id,
+                }
+            )
+        except Exception as exc:
+            yield sse({"status": "error", "error": f"Invalid URL: {exc}"})
+            return
+
+        processor = YoutubeProcessor()
+
+        # Step 1: Video metadata
+        yield sse(
+            {"status": "video_metadata", "message": "Extracting video metadata..."}
+        )
+        try:
+            video_info = await processor._get_video_info(video_id, url)  # type: ignore[attr-defined]
+            yield sse(
+                {
+                    "status": "video_metadata_done",
+                    "message": "Video metadata extracted",
+                    "title": video_info.get("title"),
+                }
+            )
+        except Exception as exc:
+            yield sse({"status": "error", "error": f"Metadata error: {exc}"})
+            return
+
+        # Step 2: Transcript
+        yield sse(
+            {
+                "status": "transcript_processing",
+                "message": "Processing transcript...",
+            }
+        )
+        transcript = None
+        try:
+            transcript = await processor._get_transcript(  # type: ignore[attr-defined]
+                video_id, language, max_transcript_length
+            )
+            yield sse(
+                {
+                    "status": "transcript_done",
+                    "message": "Transcript processed",
+                    "length": len(transcript) if transcript else 0,
+                }
+            )
+        except Exception as exc:
+            # Non-fatal: continue without transcript
+            yield sse(
+                {
+                    "status": "transcript_skipped",
+                    "message": f"Transcript not available: {exc}",
+                }
+            )
+
+        # Step 3: Documentation generation
+        yield sse(
+            {
+                "status": "doc_generation",
+                "message": "Generating documentation...",
+            }
+        )
+        try:
+            content_md = _generate_documentation(
+                video_info, transcript, None, include_comments
+            )
+            yield sse(
+                {
+                    "status": "doc_generated",
+                    "message": "Documentation generated",
+                    "size": len(content_md),
+                }
+            )
+        except Exception as exc:
+            yield sse({"status": "error", "error": f"Generation error: {exc}"})
+            return
+
+        # Step 4: S3 upload
+        yield sse(
+            {"status": "s3_upload", "message": "Uploading to cloud storage..."}
+        )
+        try:
+            from ...youtubedoc.utils.s3_uploader import upload_markdown_to_s3
+
+            object_key = (
+                f"docs/youtube/{video_id}.md" if video_id else f"docs/youtube/unknown.md"
+            )
+            content_url = upload_markdown_to_s3(content_md, object_key)
+            if content_url:
+                yield sse(
+                    {
+                        "status": "complete",
+                        "message": "Upload complete",
+                        "content_url": content_url,
+                        "video_id": video_id,
+                    }
+                )
+            else:
+                yield sse(
+                    {
+                        "status": "complete",
+                        "message": "Completed with local content",
+                        "content": content_md,
+                        "video_id": video_id,
+                    }
+                )
+        except Exception as exc:
+            yield sse({"status": "error", "error": f"Upload error: {exc}"})
+            return
+
+    headers = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 @router.post("/watch", response_class=HTMLResponse)

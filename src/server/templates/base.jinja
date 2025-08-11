@@ -34,7 +34,7 @@
         {% block extra_head %}{% endblock %}
     </head>
     <body class="bg-[#FFFDF8] min-h-screen flex flex-col">
-        {% include 'components/navbar.jinja' %}
+        {% block navbar %}{% include 'components/navbar.jinja' %}{% endblock %}
         
         <!-- Main content wrapper -->
         <main class="flex-1 w-full">

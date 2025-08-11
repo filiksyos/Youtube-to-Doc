@@ -1,7 +1,7 @@
 """Process a query by parsing YouTube URL and generating video documentation."""
 
 from functools import partial
-from typing import Optional
+from typing import Optional, Dict
 
 from fastapi import Request
 from starlette.templating import _TemplateResponse
@@ -130,6 +130,84 @@ async def process_query(
             )
 
     return template_response(context=context)
+
+
+async def process_query_core(
+    input_text: str,
+    max_transcript_length: int,
+    include_comments: bool = False,
+    language: str = "en",
+) -> Dict:
+    """Process a query and return a context dict suitable for JSON responses.
+
+    This mirrors the logic in process_query but returns plain data instead of
+    a rendered template.
+    """
+    context: Dict[str, Optional[str] | bool | dict] = {
+        "video_url": input_text,
+        "default_transcript_length": max_transcript_length,
+        "include_comments": include_comments,
+        "language": language,
+        "content": None,
+        "content_url": None,
+        "error_message": None,
+        "result": False,
+    }
+
+    try:
+        query = VideoQuery(
+            url=input_text,
+            max_transcript_length=max_transcript_length,
+            include_comments=include_comments,
+            language=language,
+        )
+
+        processor = YoutubeProcessor()
+        video_info, transcript, comments = await processor.process_video(query)
+
+        content_md = _generate_documentation(
+            video_info, transcript, comments, include_comments
+        )
+
+        video_id = video_info.get("video_id") or _extract_video_id_from_url(input_text)
+        object_key = (
+            f"docs/youtube/{video_id}.md" if video_id else f"docs/youtube/unknown.md"
+        )
+
+        content_url = upload_markdown_to_s3(content_md, object_key)
+        if content_url:
+            context["content_url"] = content_url
+            context["content"] = None
+        else:
+            if len(content_md) > MAX_DISPLAY_SIZE:
+                content_md = (
+                    f"(Content cropped to {int(MAX_DISPLAY_SIZE / 1_000)}k characters)\n"
+                    + content_md[:MAX_DISPLAY_SIZE]
+                )
+            context["content"] = content_md
+
+        context["video_info"] = video_info
+        context["result"] = True
+
+        _print_success(
+            url=input_text,
+            title=video_info.get("title", "Unknown"),
+            duration=video_info.get("duration", 0),
+            transcript_length=len(transcript) if transcript else 0,
+        )
+    except Exception as exc:
+        _print_error(input_text, exc)
+        context["error_message"] = f"Error processing video: {exc}"
+        if "not available" in str(exc).lower():
+            context["error_message"] = (
+                "Video not available. Please check that the video is public and the URL is correct."
+            )
+        elif "transcript" in str(exc).lower():
+            context["error_message"] = (
+                "Transcript not available for this video. Try a different video or check if captions are enabled."
+            )
+
+    return context
 
 
 def _extract_video_id_from_url(url: str) -> Optional[str]:
