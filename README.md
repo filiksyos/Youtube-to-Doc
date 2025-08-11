@@ -64,7 +64,7 @@ uvicorn src.server.main:app --host 0.0.0.0 --port 8000 --reload
    - **Transcript Length**: Maximum characters to include
    - **Language**: Preferred transcript language
    - **Include Comments**: Whether to extract video comments
-4. Click "Generate Documentation" to process the video
+4. Click "Create Docs" to process the video
 
 ### API Usage
 
