@@ -187,14 +187,14 @@
     setStatus('Checking if it\'s cached...');
     let messageReceived = false;
     
-    // Fallback to polling if no messages received within 8 seconds
+    // Fallback to polling if no messages received within 3 seconds
     const fallbackTimeout = setTimeout(() => {
       if (!messageReceived) {
         console.log('SSE timeout - no messages received, falling back to polling');
         sse.close();
         startPolling(url);
       }
-    }, 8000);
+    }, 3000);
     
     sse.onmessage = (ev) => {
       try {
