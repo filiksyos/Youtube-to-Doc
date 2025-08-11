@@ -1,14 +1,20 @@
 """This module defines the FastAPI router for dynamic YouTube video processing."""
 
 from fastapi import APIRouter, Request, Form, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 
 from ..query_processor import process_query, _generate_documentation, _extract_video_id_from_url
 from ..server_utils import limiter
 from ...youtubedoc.youtube_processor import YoutubeProcessor
 from ...youtubedoc.schemas.video_schema import VideoQuery
+import asyncio
+from typing import Dict, Any
+import time
 
 router = APIRouter()
+
+# In-memory progress tracking for polling fallback
+progress_store: Dict[str, Dict[str, Any]] = {}
 
 
 @router.get("/video/{video_id}", response_class=HTMLResponse)
@@ -86,10 +92,12 @@ async def stream_process(
             return f"data: {json.dumps(data)}\n\n"
         
         # Send initial connection event to establish stream
+        print(f"SSE: Sending connected message")
         yield sse({"status": "connected", "message": "Connection established"})
         await asyncio.sleep(0.1)  # Small delay to prevent buffering
 
         # Step 0: URL validation
+        print(f"SSE: Sending url_validation message")
         yield sse({"status": "url_validation", "message": "Validating URL..."})
         await asyncio.sleep(0.1)
         try:
@@ -245,6 +253,155 @@ async def stream_process(
         "Transfer-Encoding": "chunked"
     }
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
+
+
+@router.post("/api/process/start")
+async def start_processing(
+    url: str = Query(..., description="YouTube video URL"),
+    max_transcript_length: int = Query(10000),
+    include_comments: bool = Query(False),
+    language: str = Query("en"),
+):
+    """Start processing a video and return a task ID for polling."""
+    try:
+        query = VideoQuery(
+            url=url,
+            max_transcript_length=max_transcript_length,
+            include_comments=include_comments,
+            language=language,
+        )
+        video_id = query.extract_video_id()
+        if not video_id:
+            return JSONResponse({"error": "Invalid YouTube URL"}, status_code=400)
+        
+        task_id = f"{video_id}_{int(time.time())}"
+        
+        # Initialize progress
+        progress_store[task_id] = {
+            "status": "started",
+            "message": "Starting processing...",
+            "video_id": video_id,
+            "url": url,
+            "max_transcript_length": max_transcript_length,
+            "include_comments": include_comments,
+            "language": language,
+            "started_at": time.time()
+        }
+        
+        # Start background processing
+        asyncio.create_task(process_video_background(task_id))
+        
+        return JSONResponse({"task_id": task_id, "status": "started"})
+    
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@router.get("/api/process/status/{task_id}")
+async def get_processing_status(task_id: str):
+    """Get the current processing status for a task."""
+    if task_id not in progress_store:
+        return JSONResponse({"error": "Task not found"}, status_code=404)
+    
+    progress = progress_store[task_id]
+    
+    # Clean up completed tasks after 5 minutes
+    if progress.get("status") in ["complete", "error"] and time.time() - progress.get("started_at", 0) > 300:
+        del progress_store[task_id]
+    
+    return JSONResponse(progress)
+
+
+async def process_video_background(task_id: str):
+    """Background task to process video and update progress."""
+    try:
+        progress = progress_store[task_id]
+        
+        # Step 1: URL validation (already done, update status)
+        progress["status"] = "url_validated"
+        progress["message"] = "URL validated"
+        
+        video_id = progress["video_id"]
+        url = progress["url"]
+        
+        # Step 2: Cache check
+        progress["status"] = "cache_check"
+        progress["message"] = "Checking cache..."
+        
+        object_key = f"docs/youtube/{video_id}.md"
+        try:
+            from ...youtubedoc.utils.s3_uploader import check_cached_documentation
+            cached_url = check_cached_documentation(object_key)
+            if cached_url:
+                progress["status"] = "complete"
+                progress["message"] = "Found in cache"
+                progress["content_url"] = cached_url
+                progress["cached"] = True
+                return
+            else:
+                progress["status"] = "cache_miss"
+                progress["message"] = "Not cached, processing..."
+        except Exception:
+            progress["status"] = "cache_miss" 
+            progress["message"] = "Cache check failed, processing..."
+        
+        # Step 3: Video metadata
+        progress["status"] = "video_metadata"
+        progress["message"] = "Extracting video metadata..."
+        
+        processor = YoutubeProcessor()
+        video_info = await processor._get_video_info(video_id, url)
+        
+        progress["status"] = "video_metadata_done"
+        progress["message"] = "Metadata extracted"
+        progress["title"] = video_info.get("title")
+        
+        # Step 4: Transcript
+        progress["status"] = "transcript_processing"
+        progress["message"] = "Processing transcript..."
+        
+        transcript = await processor._get_transcript(
+            video_id, progress["language"], progress["max_transcript_length"]
+        )
+        
+        if transcript:
+            progress["status"] = "transcript_done"
+            progress["message"] = "Transcript processed"
+        else:
+            progress["status"] = "transcript_skipped"
+            progress["message"] = "Transcript unavailable, continuing..."
+        
+        # Step 5: Documentation generation
+        progress["status"] = "doc_generation"
+        progress["message"] = "Generating documentation..."
+        
+        content_md = _generate_documentation(
+            video_info, transcript, None, progress["include_comments"]
+        )
+        
+        progress["status"] = "doc_generated"
+        progress["message"] = "Documentation generated"
+        
+        # Step 6: S3 upload
+        progress["status"] = "s3_upload"
+        progress["message"] = "Uploading to cloud storage..."
+        
+        from ...youtubedoc.utils.s3_uploader import upload_markdown_to_s3
+        content_url = upload_markdown_to_s3(content_md, object_key)
+        
+        if content_url:
+            progress["status"] = "complete"
+            progress["message"] = "Upload complete"
+            progress["content_url"] = content_url
+        else:
+            progress["status"] = "complete"
+            progress["message"] = "Completed with local content"
+            progress["content"] = content_md
+            
+    except Exception as exc:
+        progress_store[task_id]["status"] = "error"
+        progress_store[task_id]["error"] = str(exc)
+        progress_store[task_id]["message"] = f"Error: {exc}"
 
 
 @router.post("/watch", response_class=HTMLResponse)

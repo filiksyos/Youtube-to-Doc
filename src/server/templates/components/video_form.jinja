@@ -185,95 +185,170 @@
   function startSSE(url, retryCount = 0) {
     const sse = new EventSource(url);
     setStatus('Checking if it\'s cached...');
+    let messageReceived = false;
+    
+    // Fallback to polling if no messages received within 8 seconds
+    const fallbackTimeout = setTimeout(() => {
+      if (!messageReceived) {
+        console.log('SSE timeout - no messages received, falling back to polling');
+        sse.close();
+        startPolling(url);
+      }
+    }, 8000);
+    
     sse.onmessage = (ev) => {
       try {
+        messageReceived = true;
+        clearTimeout(fallbackTimeout);
         const data = JSON.parse(ev.data);
-        console.log('SSE message received:', data); // Debug logging
-        switch (data.status) {
-          case 'connected':
-            setStatus('Connection established...');
-            break;
-          case 'url_validation':
-            setStatus('Validating URL...');
-            break;
-          case 'url_validated':
-            setStatus('URL validated.');
-            break;
-          case 'cache_check':
-            setStatus('Checking cache...');
-            break;
-          case 'cache_miss':
-            setStatus('Not cached, processing...');
-            break;
-          case 'video_metadata':
-            setStatus('Extracting video metadata...');
-            break;
-          case 'video_metadata_done':
-            setStatus('Metadata extracted');
-            break;
-          case 'transcript_processing':
-            setStatus('Processing transcript...');
-            break;
-          case 'transcript_done':
-            setStatus('Transcript processed.');
-            break;
-          case 'transcript_skipped':
-            setStatus('Transcript unavailable, continuing...');
-            break;
-          case 'doc_generation':
-            setStatus('Generating documentation...');
-            break;
-          case 'doc_generated':
-            setStatus('Documentation generated.');
-            break;
-          case 's3_upload':
-            setStatus('Uploading to S3...');
-            break;
-          case 'complete':
-            sse.close();
-            const header = document.getElementById('loading-header');
-            if (header) header.remove();
-            
-            // Show cache indicator if from cache
-            if (data.cached) {
-              renderCachedResult(data);
-            } else {
-              renderResultInline(data);
-            }
-            break;
-          case 'error':
-            setStatus('Error: ' + data.error);
-            sse.close();
-            break;
-          default:
-            break;
-        }
+        console.log('SSE message received:', data);
+        handleStatusUpdate(data, sse);
       } catch (e) {
         console.error('Error parsing SSE message:', e, ev.data);
       }
     };
+    
     sse.onerror = (error) => {
       console.error('SSE connection error:', error);
-      console.log('SSE readyState:', sse.readyState);
       sse.close();
+      clearTimeout(fallbackTimeout);
       
-      if (retryCount < 2) {
-        setStatus(`Connection error. Retrying... (${retryCount + 1}/2)`);
+      if (retryCount < 1) {
+        setStatus(`Connection error. Retrying... (${retryCount + 1}/1)`);
         setTimeout(() => {
-          console.log('Retrying SSE connection...');
           startSSE(url, retryCount + 1);
         }, 2000);
       } else {
-        setStatus('Connection failed. Using fallback...');
-        console.log('SSE failed, falling back to form submission');
-        setTimeout(() => {
-          form.submit();
-        }, 1000);
+        console.log('SSE failed, falling back to polling');
+        startPolling(url);
       }
     };
+    
     sse.onopen = () => {
       console.log('SSE connection opened');
     };
+  }
+
+  function startPolling(sseUrl) {
+    setStatus('Switching to polling mode...');
+    
+    // Extract URL params from the SSE URL
+    const urlParams = new URLSearchParams(sseUrl.split('?')[1]);
+    const videoUrl = urlParams.get('url');
+    const maxLength = urlParams.get('max_transcript_length');
+    const includeComments = urlParams.get('include_comments');
+    const language = urlParams.get('language');
+    
+    // Start the processing task
+    fetch('/api/process/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `url=${encodeURIComponent(videoUrl)}&max_transcript_length=${maxLength}&include_comments=${includeComments}&language=${language}`
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        setStatus('Error: ' + data.error);
+        return;
+      }
+      
+      const taskId = data.task_id;
+      console.log('Started polling task:', taskId);
+      pollStatus(taskId);
+    })
+    .catch(error => {
+      console.error('Error starting task:', error);
+      setStatus('Error starting task');
+      setTimeout(() => form.submit(), 2000);
+    });
+  }
+  
+  function pollStatus(taskId) {
+    const poll = () => {
+      fetch(`/api/process/status/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+          console.log('Poll response:', data);
+          handleStatusUpdate(data);
+          
+          if (data.status === 'complete' || data.status === 'error') {
+            return; // Stop polling
+          }
+          
+          setTimeout(poll, 1000); // Poll every second
+        })
+        .catch(error => {
+          console.error('Polling error:', error);
+          setStatus('Polling error');
+          setTimeout(() => form.submit(), 2000);
+        });
+    };
+    
+    poll();
+  }
+  
+  function handleStatusUpdate(data, sse = null) {
+    switch (data.status) {
+      case 'connected':
+        setStatus('Connection established...');
+        break;
+      case 'started':
+        setStatus('Starting...');
+        break;
+      case 'url_validation':
+        setStatus('Validating URL...');
+        break;
+      case 'url_validated':
+        setStatus('URL validated.');
+        break;
+      case 'cache_check':
+        setStatus('Checking cache...');
+        break;
+      case 'cache_miss':
+        setStatus('Not cached, processing...');
+        break;
+      case 'video_metadata':
+        setStatus('Extracting video metadata...');
+        break;
+      case 'video_metadata_done':
+        setStatus('Metadata extracted');
+        break;
+      case 'transcript_processing':
+        setStatus('Processing transcript...');
+        break;
+      case 'transcript_done':
+        setStatus('Transcript processed.');
+        break;
+      case 'transcript_skipped':
+        setStatus('Transcript unavailable, continuing...');
+        break;
+      case 'doc_generation':
+        setStatus('Generating documentation...');
+        break;
+      case 'doc_generated':
+        setStatus('Documentation generated.');
+        break;
+      case 's3_upload':
+        setStatus('Uploading to S3...');
+        break;
+      case 'complete':
+        if (sse) sse.close();
+        const header = document.getElementById('loading-header');
+        if (header) header.remove();
+        
+        if (data.cached) {
+          renderCachedResult(data);
+        } else {
+          renderResultInline(data);
+        }
+        break;
+      case 'error':
+        if (sse) sse.close();
+        setStatus('Error: ' + (data.error || data.message));
+        break;
+      default:
+        break;
+    }
   }
 
   form.addEventListener('submit', function(e){
