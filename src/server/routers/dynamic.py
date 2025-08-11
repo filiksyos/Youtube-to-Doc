@@ -107,6 +107,27 @@ async def stream_process(
             yield sse({"status": "error", "error": f"Invalid URL: {exc}"})
             return
 
+        # Step 1: Cache check
+        yield sse({"status": "cache_check", "message": "Checking cache..."})
+        object_key = f"docs/youtube/{video_id}.md"
+        
+        try:
+            from ...youtubedoc.utils.s3_uploader import check_cached_documentation
+            cached_url = check_cached_documentation(object_key)
+            if cached_url:
+                yield sse({
+                    "status": "complete",
+                    "message": "Found in cache",
+                    "content_url": cached_url,
+                    "video_id": video_id,
+                    "cached": True
+                })
+                return
+            else:
+                yield sse({"status": "cache_miss", "message": "Not cached, processing..."})
+        except Exception as exc:
+            yield sse({"status": "cache_miss", "message": "Cache check failed, processing..."})
+
         processor = YoutubeProcessor()
 
         # Step 1: Video metadata

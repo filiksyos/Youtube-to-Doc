@@ -135,6 +135,53 @@
     }
   }
 
+  function renderCachedResult(data) {
+    const container = document.getElementById('result-inline-container');
+    if (!container) return;
+    
+    container.innerHTML = `
+      <div class="flex flex-wrap justify-center gap-4">
+        <div class="relative inline-block group">
+          <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+          <a href="${data.content_url}" target="_blank" rel="noopener noreferrer"
+             class="inline-flex items-center px-4 py-2 bg-[#a0e8a0] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
+             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+             </svg>
+             View Documentation (Cloud)
+          </a>
+        </div>
+        <div class="relative inline-block group">
+          <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
+          <button type="button" id="cached-copy-link" class="inline-flex items-center px-4 py-2 bg-[#ffc480] border-[3px] border-gray-900 text-gray-900 rounded group-hover:-translate-y-px group-hover:-translate-x-px transition-transform relative z-10">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+            </svg>
+            Copy Documentation Link
+          </button>
+        </div>
+      </div>`;
+    
+    const copyBtn = document.getElementById('cached-copy-link');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function(){
+        navigator.clipboard.writeText(String(data.content_url)).catch(()=>{});
+        copyBtn.innerHTML = `
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          </svg>
+          Copied!`;
+        setTimeout(()=>{ 
+          copyBtn.innerHTML = `
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+            </svg>
+            Copy Documentation Link`;
+        }, 1500);
+      });
+    }
+  }
+
   function startSSE(url) {
     const sse = new EventSource(url);
     setStatus('Checking if it\'s cached...');
@@ -147,6 +194,12 @@
             break;
           case 'url_validated':
             setStatus('URL validated.');
+            break;
+          case 'cache_check':
+            setStatus('Checking cache...');
+            break;
+          case 'cache_miss':
+            setStatus('Not cached, processing...');
             break;
           case 'video_metadata':
             setStatus('Extracting video metadata...');
@@ -176,7 +229,13 @@
             sse.close();
             const header = document.getElementById('loading-header');
             if (header) header.remove();
-            renderResultInline(data);
+            
+            // Show cache indicator if from cache
+            if (data.cached) {
+              renderCachedResult(data);
+            } else {
+              renderResultInline(data);
+            }
             break;
           case 'error':
             setStatus('Error: ' + data.error);

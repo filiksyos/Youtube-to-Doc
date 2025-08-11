@@ -17,6 +17,53 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 
 
+def check_cached_documentation(object_key: str) -> Optional[str]:
+    """Check if documentation already exists in S3 and return the URL if found.
+
+    Parameters
+    ----------
+    object_key : str
+        Key to check for in the S3 bucket.
+
+    Returns
+    -------
+    Optional[str]
+        Public URL of the cached object, or None if not found.
+    """
+    bucket_name = os.getenv("AWS_S3_BUCKET")
+    if not bucket_name:
+        return None
+
+    region = (os.getenv("AWS_REGION") or "us-east-1").strip()
+
+    try:
+        s3_client = boto3.client("s3", region_name=region if region else None)
+        
+        # Check if object exists
+        try:
+            s3_client.head_object(Bucket=bucket_name, Key=object_key)
+        except ClientError as exc:
+            error_code = (exc.response.get("Error", {}) or {}).get("Code")
+            if error_code == "404":
+                return None  # Object doesn't exist
+            raise  # Other error, re-raise
+
+        # Object exists, construct URL
+        try:
+            loc = s3_client.get_bucket_location(Bucket=bucket_name).get("LocationConstraint")
+            bucket_region = loc or "us-east-1"
+        except Exception:
+            bucket_region = region or "us-east-1"
+
+        if bucket_region == "us-east-1":
+            return f"https://{bucket_name}.s3.amazonaws.com/{object_key}"
+        return f"https://{bucket_name}.s3.{bucket_region}.amazonaws.com/{object_key}"
+
+    except Exception as exc:
+        logger.error("Error checking cached documentation: %s", exc)
+        return None
+
+
 def upload_markdown_to_s3(content_md: str, object_key: str) -> Optional[str]:
     """Upload markdown to S3 and return the public URL if successful.
 
