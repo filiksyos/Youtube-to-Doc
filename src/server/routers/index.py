@@ -44,9 +44,6 @@ async def home(request: Request) -> HTMLResponse:
 async def index_post(
     request: Request,
     input_text: str = Form(...),
-    max_transcript_length: int = Form(...),
-    include_comments: bool = Form(False),
-    language: str = Form("en"),
 ) -> HTMLResponse:
     """
     Process the form submission with user input for YouTube video processing.
@@ -74,11 +71,13 @@ async def index_post(
         An HTML response containing the results of processing the YouTube video,
         which will be rendered and returned to the user.
     """
+    # Enforce full transcript in English without comments
+    MAX_INT = 10_000_000
     return await process_query(
         request,
         input_text,
-        max_transcript_length,
-        include_comments,
-        language,
+        MAX_INT,
+        False,
+        "en",
         is_index=True,
-    ) 
+    )

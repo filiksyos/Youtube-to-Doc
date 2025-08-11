@@ -46,9 +46,6 @@ async def video_page(request: Request, video_id: str) -> HTMLResponse:
 async def process_video(
     request: Request,
     video_id: str,
-    max_transcript_length: int = Form(...),
-    include_comments: bool = Form(False),
-    language: str = Form("en"),
 ) -> HTMLResponse:
     """
     Process a specific YouTube video.
@@ -73,11 +70,13 @@ async def process_video(
     """
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
+    # Enforce full transcript in English without comments
+    MAX_INT = 10_000_000
     return await process_query(
         request,
         video_url,
-        max_transcript_length,
-        include_comments,
-        language,
+        MAX_INT,
+        False,
+        "en",
         is_index=False,
-    ) 
+    )
