@@ -12,7 +12,6 @@ EXAMPLE_VIDEOS: List[Dict[str, str]] = [
     {"name": "FastAPI Crash Course", "url": "https://www.youtube.com/watch?v=7t2alSnE2-I"},
     {"name": "Machine Learning Basics", "url": "https://www.youtube.com/watch?v=Gv9_4yMHFhI"},
     {"name": "JavaScript ES6", "url": "https://www.youtube.com/watch?v=WZQc7RUAg18"},
-    {"name": "React Fundamentals", "url": "https://www.youtube.com/watch?v=SqcY0GlETPk"},
 ]
 
 import os

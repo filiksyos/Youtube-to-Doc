@@ -1,54 +1,41 @@
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-    <form method="post" class="space-y-6">
-        <!-- Main input section -->
-        <div class="space-y-4">
-            <label for="input_text" class="block text-sm font-medium text-gray-700">
-                YouTube Video URL
-            </label>
-            <input 
-                type="text" 
-                id="input_text" 
-                name="input_text" 
-                placeholder="https://www.youtube.com/watch?v=..." 
-                value="{{ video_url or '' }}"
-                class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500"
-                required
-            >
-        </div>
-
-        <!-- Advanced options removed: always use full English transcript without comments -->
-
-        <!-- Submit button -->
-        <div class="flex justify-center">
-            <button 
-                type="submit" 
-                class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
-            >
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-                Generate Documentation
-            </button>
-        </div>
-    </form>
-
-    <!-- Example videos section -->
-    {% if show_examples and examples %}
-        <div class="mt-8 pt-6 border-t border-gray-200">
-            <h3 class="text-lg font-medium text-gray-900 mb-4">Example Videos</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {% for example in examples %}
-                    <button 
-                        type="button"
-                        onclick="submitExample('{{ example.url }}')"
-                        class="text-left p-3 border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-colors duration-200"
-                    >
-                        <div class="font-medium text-gray-900">{{ example.name }}</div>
-                        <div class="text-sm text-gray-500 truncate">{{ example.url }}</div>
-                    </button>
-                {% endfor %}
+<div class="relative">
+    <div class="w-full h-full absolute inset-0 bg-gray-900 rounded-xl translate-y-2 translate-x-2"></div>
+    <div class="rounded-xl relative z-20 pl-8 sm:pl-10 pr-8 sm:pr-16 py-8 border-[3px] border-gray-900 bg-[#fff4da]">
+        <form method="post" class="flex md:flex-row flex-col w-full h-full justify-center items-stretch space-y-5 md:space-y-0 md:space-x-5">
+            <div class="relative w-full h-full">
+                <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
+                <input
+                    type="text"
+                    id="input_text"
+                    name="input_text"
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    value="{{ video_url or '' }}"
+                    required
+                    class="border-[3px] w-full relative z-20 border-gray-900 placeholder-gray-600 text-lg font-medium focus:outline-none py-3.5 px-6 rounded"
+                />
             </div>
-        </div>
-    {% endif %}
-</div>
 
+            <div class="relative w-auto flex-shrink-0 h-full group">
+                <div class="w-full h-full rounded bg-gray-800 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
+                <button type="submit"
+                        class="py-3.5 rounded px-6 group-hover:-translate-y-px group-hover:-translate-x-px ease-out duration-300 z-20 relative w-full border-[3px] border-gray-900 font-medium bg-[#ff6b6b] tracking-wide text-lg flex-shrink-0 text-white">
+                    Generate Documentation
+                </button>
+            </div>
+        </form>
+
+        {% if show_examples and examples %}
+            <div class="mt-4">
+                <p class="opacity-70 mb-1">Try these example videos:</p>
+                <div class="flex flex-wrap gap-2">
+                    {% for example in examples %}
+                        <button onclick="submitExample('{{ example.url }}')"
+                                class="px-4 py-1 bg-[#EBDBB7] hover:bg-[#FFC480] text-gray-900 rounded transition-colors duration-200 border-[3px] border-gray-900 relative hover:-translate-y-px hover:-translate-x-px">
+                            {{ example.name }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
