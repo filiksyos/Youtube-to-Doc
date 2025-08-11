@@ -42,11 +42,11 @@ def upload_markdown_to_s3(content_md: str, object_key: str) -> Optional[str]:
         logger.warning("AWS_S3_BUCKET env var is not set; skipping upload.")
         return None
 
-    region = os.getenv("AWS_REGION", "us-east-1") or "us-east-1"
-    region = region.strip()
+    region = (os.getenv("AWS_REGION") or "us-east-1").strip()
 
     try:
-        s3_client = boto3.client("s3", region_name=region)
+        # Use a general S3 client for upload; URL construction will use the bucket's real region
+        s3_client = boto3.client("s3", region_name=region if region else None)
         # First try with ACL for buckets that support it; if not supported, retry without ACL.
         try:
             s3_client.put_object(
@@ -69,9 +69,16 @@ def upload_markdown_to_s3(content_md: str, object_key: str) -> Optional[str]:
             else:
                 raise
 
-        if region == "us-east-1":
+        # Discover the actual bucket region to build a correct URL and avoid PermanentRedirect
+        try:
+            loc = s3_client.get_bucket_location(Bucket=bucket_name).get("LocationConstraint")
+            bucket_region = loc or "us-east-1"
+        except Exception:
+            bucket_region = region or "us-east-1"
+
+        if bucket_region == "us-east-1":
             return f"https://{bucket_name}.s3.amazonaws.com/{object_key}"
-        return f"https://{bucket_name}.s3.{region}.amazonaws.com/{object_key}"
+        return f"https://{bucket_name}.s3.{bucket_region}.amazonaws.com/{object_key}"
 
     except ClientError as exc:
         logger.error("Failed to upload %s to %s: %s", object_key, bucket_name, exc)
