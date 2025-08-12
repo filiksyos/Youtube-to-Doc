@@ -256,7 +256,13 @@ def _generate_documentation(
     doc_parts.append(f"**Duration:** {_format_duration(video_info.get('duration', 0))}\n")
     doc_parts.append(f"**Views:** {video_info.get('view_count', 'Unknown')}\n")
     doc_parts.append(f"**Channel:** {video_info.get('channel', 'Unknown')}\n")
-    doc_parts.append(f"**Upload Date:** {video_info.get('upload_date', 'Unknown')}\n\n")
+    doc_parts.append(f"**Upload Date:** {video_info.get('upload_date', 'Unknown')}\n")
+    
+    # Add detected language info if available
+    if video_info.get('detected_transcript_language'):
+        doc_parts.append(f"**Transcript Language:** {video_info.get('detected_transcript_language')}\n")
+    
+    doc_parts.append("\n")
     
     # Description
     if video_info.get('description'):
