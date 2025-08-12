@@ -1,8 +1,6 @@
 # YouTube to Doc
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)](https://fastapi.tiangolo.com/)
+https://github.com/user-attachments/assets/4431d283-23c3-40eb-8c65-a20361a3e945
 
 Turn any YouTube video into a comprehensive documentation link that AI coding tools and LLMs can easily index and understand.
 
