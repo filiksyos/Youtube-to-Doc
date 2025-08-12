@@ -173,7 +173,12 @@ class YoutubeProcessor:
         video_info = await self._get_video_info(video_id, query.url)
         
         # Extract transcript
-        transcript = await self._get_transcript(video_id, query.language, query.max_transcript_length)
+        transcript, detected_language = await self._get_transcript(video_id, query.language, query.max_transcript_length)
+        
+        # Add detected language to video info
+        if detected_language:
+            video_info["detected_transcript_language"] = detected_language
+            print(f"INFO: Transcript extracted in language: {detected_language}")
         
         # Extract comments if requested
         comments = None
@@ -290,7 +295,7 @@ class YoutubeProcessor:
         video_id: str, 
         language: str = "en", 
         max_length: int = 10000
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Extract video transcript using YouTube Transcript API.
         
@@ -305,19 +310,19 @@ class YoutubeProcessor:
             
         Returns
         -------
-        Optional[str]
-            The transcript text or None if not available.
+        Tuple[Optional[str], Optional[str]]
+            A tuple containing (transcript_text, detected_language) or (None, None) if not available.
         """
         print(f"DEBUG: Attempting transcript extraction for video_id: {video_id}")
         print(f"DEBUG: Language: {language}, Max length: {max_length}")
         
         if not YouTubeTranscriptApi:
             print("ERROR: YouTubeTranscriptApi is not available - package not imported")
-            return None
+            return None, None
         
         if not self.text_formatter:
             print("ERROR: TextFormatter is not available - package not imported")
-            return None
+            return None, None
         
         def extract_transcript():
             try:
@@ -345,7 +350,7 @@ class YoutubeProcessor:
                         print(f"DEBUG: Truncated transcript to {max_length} characters")
                     
                     print("DEBUG: Transcript extraction completed successfully")
-                    return formatted_text
+                    return formatted_text, language
                     
                 except Exception as e:
                     print(f"DEBUG: Direct fetch failed: {e}")
@@ -360,6 +365,7 @@ class YoutubeProcessor:
                         
                         # Try manual captions first, then auto-generated
                         transcript = None
+                        detected_language = language  # Start with requested language
                         try:
                             print(f"DEBUG: Attempting to find manually created transcript in {language}")
                             transcript = transcript_list.find_manually_created_transcript([language])
@@ -372,18 +378,14 @@ class YoutubeProcessor:
                                 print(f"DEBUG: Found auto-generated transcript in {language}")
                             except Exception as e2:
                                 print(f"DEBUG: Auto-generated transcript not found: {e2}")
-                                # Fall back to any available transcript
-                                try:
-                                    print("DEBUG: Falling back to any available English transcript")
-                                    transcript = transcript_list.find_transcript(['en'])
-                                    print("DEBUG: Found fallback English transcript")
-                                except Exception as e3:
-                                    print(f"DEBUG: No transcript found at all: {e3}")
-                                    raise e3
+                                # Fall back to best available transcript (any language)
+                                transcript, detected_language = self._find_best_available_transcript(transcript_list)
+                                if transcript:
+                                    print(f"DEBUG: Auto-detected language: {detected_language}")
                         
                         if not transcript:
                             print("ERROR: No transcript object found")
-                            return None
+                            return None, None
                         
                         # Fetch and format transcript
                         print("DEBUG: Fetching transcript data...")
@@ -400,7 +402,7 @@ class YoutubeProcessor:
                             print(f"DEBUG: Truncated transcript to {max_length} characters")
                         
                         print("DEBUG: Transcript extraction completed successfully")
-                        return formatted_text
+                        return formatted_text, detected_language
                         
                     except Exception as e2:
                         print(f"DEBUG: List method also failed: {e2}")
@@ -411,17 +413,66 @@ class YoutubeProcessor:
                 print(f"ERROR: Exception type: {type(e).__name__}")
                 import traceback
                 print(f"ERROR: Full traceback:\n{traceback.format_exc()}")
-                return None
+                return None, None
         
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, extract_transcript)
         
-        if result is None:
+        if result[0] is None:
             print("WARNING: Transcript extraction returned None")
         else:
-            print(f"SUCCESS: Transcript extraction returned {len(result)} characters")
+            print(f"SUCCESS: Transcript extraction returned {len(result[0])} characters in language '{result[1]}'")
         
         return result
+    
+    def _find_best_available_transcript(self, transcript_list):
+        """
+        Find the best available transcript from transcript list.
+        
+        Priority order:
+        1. First manually created transcript (any language)
+        2. First auto-generated transcript (any language)
+        
+        Parameters
+        ----------
+        transcript_list : TranscriptList
+            List of available transcripts from youtube-transcript-api
+            
+        Returns
+        -------
+        Tuple[transcript object or None, str or None]
+            A tuple containing (best_transcript, detected_language) or (None, None) if no transcripts exist
+        """
+        try:
+            # Log all available transcripts for debugging
+            available_langs = [t.language_code for t in transcript_list]
+            print(f"DEBUG: All available transcript languages: {available_langs}")
+            
+            # First try to find any manually created transcript (not auto-generated)
+            for transcript in transcript_list:
+                if not transcript.is_generated:
+                    print(f"DEBUG: Found manually created transcript in language: {transcript.language_code}")
+                    print(f"DEBUG: Using '{transcript.language_code}' as best available language (manual)")
+                    return transcript, transcript.language_code
+            
+            # If no manual transcripts, find first auto-generated transcript  
+            for transcript in transcript_list:
+                if transcript.is_generated:
+                    print(f"DEBUG: Found auto-generated transcript in language: {transcript.language_code}")
+                    print(f"DEBUG: Using '{transcript.language_code}' as best available language (auto-generated)")
+                    return transcript, transcript.language_code
+            
+            # If somehow we get here, try to get any transcript
+            for transcript in transcript_list:
+                print(f"DEBUG: Using first available transcript as fallback: {transcript.language_code}")
+                return transcript, transcript.language_code
+                    
+            print("DEBUG: No transcripts available at all")
+            return None, None
+            
+        except Exception as e:
+            print(f"ERROR: Failed to find best available transcript: {e}")
+            return None, None
     
     async def _get_comments(self, video_id: str, max_comments: int = 20) -> Optional[List[str]]:
         """
