@@ -3,7 +3,8 @@
 from fastapi import APIRouter, Request, Form, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from ..query_processor import process_query, _generate_documentation, _extract_video_id_from_url
+from ..query_processor import process_query, _generate_documentation
+from ...youtubedoc.utils.youtube_url_validator import YouTubeURLValidator
 from ..server_utils import limiter
 from ...youtubedoc.youtube_processor import YoutubeProcessor
 from ...youtubedoc.schemas.video_schema import VideoQuery
