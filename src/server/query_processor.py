@@ -9,10 +9,10 @@ from starlette.templating import _TemplateResponse
 from ..youtubedoc.youtube_processor import YoutubeProcessor
 from ..youtubedoc.schemas.video_schema import VideoQuery
 from ..youtubedoc.utils.s3_uploader import upload_markdown_to_s3
+from ..youtubedoc.utils.youtube_url_validator import YouTubeURLValidator
 from .server_config import EXAMPLE_VIDEOS, MAX_DISPLAY_SIZE, templates
 from .server_utils import Colors
 import os
-from urllib.parse import urlparse, parse_qs
 
 
 async def process_query(
@@ -88,7 +88,7 @@ async def process_query(
         content_md = _generate_documentation(video_info, transcript, comments, include_comments)
 
         # Compute object key: docs/youtube/{video_id}.md
-        video_id = video_info.get("video_id") or _extract_video_id_from_url(input_text)
+        video_id = video_info.get("video_id") or YouTubeURLValidator.extract_video_id(input_text)
         object_key = f"docs/youtube/{video_id}.md" if video_id else f"docs/youtube/unknown.md"
 
         # Upload to S3; return URL or None
@@ -169,7 +169,7 @@ async def process_query_core(
             video_info, transcript, comments, include_comments
         )
 
-        video_id = video_info.get("video_id") or _extract_video_id_from_url(input_text)
+        video_id = video_info.get("video_id") or YouTubeURLValidator.extract_video_id(input_text)
         object_key = (
             f"docs/youtube/{video_id}.md" if video_id else f"docs/youtube/unknown.md"
         )
@@ -208,18 +208,6 @@ async def process_query_core(
             )
 
     return context
-
-
-def _extract_video_id_from_url(url: str) -> Optional[str]:
-    try:
-        parsed = urlparse(url)
-        if parsed.netloc.endswith("youtube.com") and parsed.path == "/watch":
-            return parse_qs(parsed.query).get("v", [None])[0]
-        if parsed.netloc == "youtu.be":
-            return parsed.path.lstrip("/") or None
-    except Exception:
-        return None
-    return None
 
 
 def _generate_documentation(

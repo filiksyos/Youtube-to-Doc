@@ -1,12 +1,19 @@
-"""URL utilities for YouTube video processing."""
+"""URL utilities for YouTube video processing.
 
-import re
+DEPRECATED: This module is now deprecated. Use youtube_url_validator.py instead.
+These functions are kept for backward compatibility but delegate to the
+centralized YouTubeURLValidator class.
+"""
+
 from typing import Optional
+from .youtube_url_validator import YouTubeURLValidator
 
 
 def extract_video_id(url: str) -> Optional[str]:
     """
     Extract video ID from various YouTube URL formats.
+    
+    DEPRECATED: Use YouTubeURLValidator.extract_video_id() instead.
     
     Parameters
     ----------
@@ -18,24 +25,14 @@ def extract_video_id(url: str) -> Optional[str]:
     Optional[str]
         The video ID if found, None otherwise.
     """
-    youtube_patterns = [
-        r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/v/([a-zA-Z0-9_-]{11})',
-    ]
-    
-    for pattern in youtube_patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    
-    return None
+    return YouTubeURLValidator.extract_video_id(url)
 
 
 def is_valid_youtube_url(url: str) -> bool:
     """
     Check if a URL is a valid YouTube URL.
+    
+    DEPRECATED: Use YouTubeURLValidator.is_valid_youtube_url() instead.
     
     Parameters
     ----------
@@ -47,12 +44,14 @@ def is_valid_youtube_url(url: str) -> bool:
     bool
         True if valid YouTube URL, False otherwise.
     """
-    return extract_video_id(url) is not None
+    return YouTubeURLValidator.is_valid_youtube_url(url)
 
 
 def normalize_youtube_url(url: str) -> Optional[str]:
     """
     Normalize a YouTube URL to standard format.
+    
+    DEPRECATED: Use YouTubeURLValidator.normalize_youtube_url() instead.
     
     Parameters
     ----------
@@ -64,7 +63,4 @@ def normalize_youtube_url(url: str) -> Optional[str]:
     Optional[str]
         Normalized YouTube URL or None if invalid.
     """
-    video_id = extract_video_id(url)
-    if video_id:
-        return f"https://www.youtube.com/watch?v={video_id}"
-    return None 
+    return YouTubeURLValidator.normalize_youtube_url(url) 

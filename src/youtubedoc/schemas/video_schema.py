@@ -1,8 +1,9 @@
 """Schema definitions for YouTube video processing."""
 
-import re
 from typing import Optional
 from pydantic import BaseModel, validator
+
+from ..utils.youtube_url_validator import YouTubeURLValidator
 
 
 class VideoQuery(BaseModel):
@@ -16,17 +17,9 @@ class VideoQuery(BaseModel):
     @validator("url")
     def validate_youtube_url(cls, v):
         """Validate that the URL is a valid YouTube URL."""
-        youtube_patterns = [
-            r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
-            r'(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})',
-            r'(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
-        ]
-        
-        for pattern in youtube_patterns:
-            if re.match(pattern, v):
-                return v
-        
-        raise ValueError("Invalid YouTube URL format")
+        if not YouTubeURLValidator.is_valid_youtube_url(v):
+            raise ValueError("Invalid YouTube URL format")
+        return v
     
     @validator("max_transcript_length")
     def validate_transcript_length(cls, v):
@@ -37,17 +30,9 @@ class VideoQuery(BaseModel):
     
     def extract_video_id(self) -> str:
         """Extract video ID from YouTube URL."""
-        youtube_patterns = [
-            r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
-            r'(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})',
-            r'(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
-        ]
-        
-        for pattern in youtube_patterns:
-            match = re.search(pattern, self.url)
-            if match:
-                return match.group(1)
-        
+        video_id = YouTubeURLValidator.extract_video_id(self.url)
+        if video_id:
+            return video_id
         raise ValueError("Could not extract video ID from URL")
 
 
