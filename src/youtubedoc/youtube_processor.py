@@ -1,506 +1,637 @@
-"""YouTube video processor for extracting video data, transcripts, and comments."""
+"""YouTube Video Content Extractor
+
+A comprehensive processor for extracting video metadata, transcripts, and comments
+from YouTube videos with support for proxies and multiple extraction methods.
+"""
 
 import asyncio
 import os
 from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime
+import logging
 
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Optional imports with graceful fallback
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
     from youtube_transcript_api.formatters import TextFormatter
+    from youtube_transcript_api.proxies import (
+        WebshareProxyConfig, 
+        GenericProxyConfig
+    )
+    TRANSCRIPT_API_AVAILABLE = True
 except ImportError:
     YouTubeTranscriptApi = None
     TextFormatter = None
-
-# Optional proxy support (recommended for cloud deployments)
-try:
-    from youtube_transcript_api.proxies import WebshareProxyConfig, GenericProxyConfig
-except Exception:
     WebshareProxyConfig = None
     GenericProxyConfig = None
+    TRANSCRIPT_API_AVAILABLE = False
+    logger.warning("youtube-transcript-api not available - transcript extraction disabled")
 
 try:
     import yt_dlp
+    YT_DLP_AVAILABLE = True
 except ImportError:
     yt_dlp = None
+    YT_DLP_AVAILABLE = False
+    logger.warning("yt-dlp not available - will use fallback methods")
 
 try:
     from pytube import YouTube
     from pytube.exceptions import VideoUnavailable, RegexMatchError
+    PYTUBE_AVAILABLE = True
 except ImportError:
     YouTube = None
     VideoUnavailable = None
     RegexMatchError = None
+    PYTUBE_AVAILABLE = False
+    logger.warning("pytube not available - video info extraction limited")
 
 from .schemas.video_schema import VideoQuery, VideoInfo
 
 
 class YoutubeProcessor:
-    """Processor for extracting YouTube video information and content."""
+    """Main processor for YouTube video content extraction.
+    
+    This class provides methods to extract video metadata, transcripts, and comments
+    from YouTube videos with support for multiple extraction methods and proxy configurations.
+    
+    Attributes:
+        youtube_api_key (str): YouTube Data API v3 key from environment
+        text_formatter (TextFormatter): Formatter for transcript text
+    """
     
     def __init__(self):
-        """Initialize the YouTube processor."""
-        self.text_formatter = TextFormatter() if TextFormatter else None
+        """Initialize the YouTube processor with dependency checks and configuration."""
         self.youtube_api_key = os.getenv("YOUTUBE_API_KEY")
-        self._check_dependencies()
-        # Detect proxy-related env at startup for better logs
-        self._log_proxy_env_state()
+        self.text_formatter = TextFormatter() if TextFormatter else None
+        
+        self._validate_dependencies()
+        self._log_environment_configuration()
     
-    def _check_dependencies(self):
-        """Check if required dependencies are available."""
-        print("DEBUG: Checking YouTube processor dependencies...")
+    def _validate_dependencies(self) -> None:
+        """Validate and log the status of all required dependencies."""
+        dependency_status = {
+            "youtube-transcript-api": TRANSCRIPT_API_AVAILABLE,
+            "yt-dlp": YT_DLP_AVAILABLE,
+            "pytube": PYTUBE_AVAILABLE,
+        }
         
-        if YouTubeTranscriptApi is None:
-            print("ERROR: youtube-transcript-api not imported - transcript extraction will fail")
-        else:
-            print("SUCCESS: youtube-transcript-api imported successfully")
-        
-        if TextFormatter is None:
-            print("ERROR: TextFormatter not imported - transcript formatting will fail")
-        else:
-            print("SUCCESS: TextFormatter imported successfully")
-        
-        if yt_dlp is None:
-            print("WARNING: yt-dlp not imported - will fallback to pytube")
-        else:
-            print("SUCCESS: yt-dlp imported successfully")
-        
-        if YouTube is None:
-            print("WARNING: pytube not imported - video info extraction limited")
-        else:
-            print("SUCCESS: pytube imported successfully")
-
-        if WebshareProxyConfig is None and GenericProxyConfig is None:
-            print("INFO: youtube-transcript-api proxy helpers not available (optional)")
-        else:
-            print("SUCCESS: youtube-transcript-api proxy helpers available (optional)")
-
-    def _log_proxy_env_state(self) -> None:
-        """Log a brief summary of proxy env configuration (without secrets)."""
-        try:
-            has_webshare_user = bool(os.getenv("YTA_WEBSHARE_USERNAME"))
-            has_webshare_pass = bool(os.getenv("YTA_WEBSHARE_PASSWORD"))
-            http_proxy = os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
-            https_proxy = os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY")
-            if has_webshare_user and has_webshare_pass:
-                print("INFO: Webshare proxy credentials detected via env (YTA_WEBSHARE_*)")
-            elif http_proxy or https_proxy:
-                print("INFO: Generic proxy URLs detected via env (HTTP(S)_PROXY / YTA_HTTP(S)_PROXY)")
+        logger.info("Validating YouTube processor dependencies...")
+        for dep_name, available in dependency_status.items():
+            if available:
+                logger.debug(f"✓ {dep_name} is available")
             else:
-                print("INFO: No proxy env detected. Requests will go direct (may be blocked on cloud)")
-        except Exception:
-            # Best-effort logging only
-            pass
-
-    def _get_proxy_config(self):
-        """Build an optional ProxyConfig for youtube-transcript-api from env.
-
-        Supported env:
-          - YTA_WEBSHARE_USERNAME, YTA_WEBSHARE_PASSWORD, YTA_WEBSHARE_LOCATIONS (optional csv)
-          - YTA_HTTP_PROXY / YTA_HTTPS_PROXY (fallback to HTTP_PROXY / HTTPS_PROXY)
+                logger.warning(f"✗ {dep_name} is not available")
+        
+        # Check critical dependencies
+        if not TRANSCRIPT_API_AVAILABLE:
+            logger.error("Critical dependency missing: youtube-transcript-api")
+        
+        if not any([YT_DLP_AVAILABLE, PYTUBE_AVAILABLE]):
+            logger.warning("No video metadata extraction libraries available")
+    
+    def _log_environment_configuration(self) -> None:
+        """Log the current proxy and API configuration from environment variables."""
+        try:
+            # Check proxy configurations
+            proxy_configs = {
+                "webshare": {
+                    "username": os.getenv("YTA_WEBSHARE_USERNAME"),
+                    "password": "***" if os.getenv("YTA_WEBSHARE_PASSWORD") else None,
+                },
+                "generic": {
+                    "http": os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY"),
+                    "https": os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY"),
+                }
+            }
+            
+            if proxy_configs["webshare"]["username"]:
+                logger.info("Webshare proxy credentials configured")
+            elif any(proxy_configs["generic"].values()):
+                logger.info("Generic proxy URLs configured")
+            else:
+                logger.info("No proxy configuration detected - using direct connections")
+            
+            # Check API key
+            if self.youtube_api_key:
+                logger.debug("YouTube API key is configured")
+            else:
+                logger.warning("YouTube API key not configured - comment extraction limited")
+                
+        except Exception as e:
+            logger.warning(f"Failed to log environment configuration: {e}")
+    
+    def _build_proxy_config(self) -> Optional[Any]:
+        """Build a proxy configuration object from environment variables.
+        
+        Priority:
+        1. Webshare residential proxies (if credentials provided)
+        2. Generic HTTP/HTTPS proxies
+        3. None (direct connection)
+        
+        Returns:
+            Optional[ProxyConfig]: Configured proxy object or None if no proxy configured.
         """
-        # Prefer Webshare rotating residential proxies if configured
-        ws_username = os.getenv("YTA_WEBSHARE_USERNAME")
-        ws_password = os.getenv("YTA_WEBSHARE_PASSWORD")
-        ws_locations_raw = os.getenv("YTA_WEBSHARE_LOCATIONS")
-        ws_locations = (
-            [loc.strip() for loc in ws_locations_raw.split(",") if loc.strip()]
-            if ws_locations_raw
-            else None
-        )
-
-        if WebshareProxyConfig and ws_username and ws_password:
+        # Webshare proxy configuration
+        webshare_username = os.getenv("YTA_WEBSHARE_USERNAME")
+        webshare_password = os.getenv("YTA_WEBSHARE_PASSWORD")
+        
+        if (WebshareProxyConfig and webshare_username and webshare_password):
             try:
-                print("INFO: Initializing WebshareProxyConfig for youtube-transcript-api")
+                # Parse optional locations filter
+                locations_raw = os.getenv("YTA_WEBSHARE_LOCATIONS", "")
+                locations = [
+                    loc.strip() 
+                    for loc in locations_raw.split(",") 
+                    if loc.strip()
+                ] if locations_raw else None
+                
+                logger.debug("Creating WebshareProxyConfig")
                 return WebshareProxyConfig(
-                    proxy_username=ws_username,
-                    proxy_password=ws_password,
-                    filter_ip_locations=ws_locations,
+                    proxy_username=webshare_username,
+                    proxy_password=webshare_password,
+                    filter_ip_locations=locations,
                 )
             except Exception as e:
-                print(f"WARN: Failed to create WebshareProxyConfig: {e}")
-
-        # Fallback: generic proxy URLs
+                logger.error(f"Failed to create WebshareProxyConfig: {e}")
+        
+        # Generic proxy configuration
         http_proxy = os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
         https_proxy = os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY")
+        
         if GenericProxyConfig and (http_proxy or https_proxy):
             try:
-                print("INFO: Initializing GenericProxyConfig for youtube-transcript-api")
+                logger.debug("Creating GenericProxyConfig")
                 return GenericProxyConfig(
                     http_url=http_proxy,
                     https_url=https_proxy,
                 )
             except Exception as e:
-                print(f"WARN: Failed to create GenericProxyConfig: {e}")
-
+                logger.error(f"Failed to create GenericProxyConfig: {e}")
+        
+        logger.debug("No proxy configuration - using direct connection")
         return None
-
-    def _build_ytt_api(self) -> Any:
-        """Create a YouTubeTranscriptApi instance with optional proxy config.
-
-        Returns Any to avoid runtime type issues when the optional import is unavailable
-        at type-check time in some environments.
-        """
-        proxy_config = self._get_proxy_config()
-        if proxy_config is not None:
-            return YouTubeTranscriptApi(proxy_config=proxy_config)
-        return YouTubeTranscriptApi()
     
     async def process_video(
         self, 
         query: VideoQuery
     ) -> Tuple[Dict[str, Any], Optional[str], Optional[List[str]]]:
-        """
-        Process a YouTube video and extract information, transcript, and comments.
+        """Process a YouTube video and extract all requested content.
         
-        Parameters
-        ----------
-        query : VideoQuery
-            The video query parameters.
+        Args:
+            query: VideoQuery object containing extraction parameters.
             
-        Returns
-        -------
-        Tuple[Dict[str, Any], Optional[str], Optional[List[str]]]
-            A tuple containing video info, transcript, and comments.
+        Returns:
+            Tuple containing:
+                - video_info: Dictionary with video metadata
+                - transcript: Extracted transcript text (or None)
+                - comments: List of comment texts (or None)
+                
+        Raises:
+            ValueError: If video URL is invalid or video ID cannot be extracted.
         """
-        video_id = query.extract_video_id()
+        logger.info(f"Processing video: {query.url}")
         
-        # Extract video information
-        video_info = await self._get_video_info(video_id, query.url)
+        try:
+            video_id = query.extract_video_id()
+            logger.debug(f"Extracted video ID: {video_id}")
+        except ValueError as e:
+            logger.error(f"Failed to extract video ID: {e}")
+            raise
         
-        # Extract transcript
-        transcript, detected_language = await self._get_transcript(video_id, query.language, query.max_transcript_length)
+        # Execute extraction tasks
+        video_info = await self._extract_video_metadata(video_id, query.url)
+        transcript, language = await self._extract_transcript(
+            video_id, 
+            query.language, 
+            query.max_transcript_length
+        )
+        comments = await self._extract_comments(video_id) if query.include_comments else None
         
-        # Add detected language to video info
-        if detected_language:
-            video_info["detected_transcript_language"] = detected_language
-            print(f"INFO: Transcript extracted in language: {detected_language}")
+        # Enhance video info with extraction results
+        if language:
+            video_info["detected_transcript_language"] = language
+            logger.info(f"Detected transcript language: {language}")
         
-        # Extract comments if requested
-        comments = None
-        if query.include_comments:
-            comments = await self._get_comments(video_id)
-        
+        logger.info(f"Video processing complete for: {video_info.get('title', 'Unknown')}")
         return video_info, transcript, comments
     
-    async def _get_video_info(self, video_id: str, url: str) -> Dict[str, Any]:
-        """
-        Extract video information using available libraries.
+    async def _extract_video_metadata(
+        self, 
+        video_id: str, 
+        url: str
+    ) -> Dict[str, Any]:
+        """Extract video metadata using available extraction libraries.
         
-        Parameters
-        ----------
-        video_id : str
-            The YouTube video ID.
-        url : str
-            The full YouTube URL.
+        Strategy:
+        1. Primary: yt-dlp (most reliable and feature-rich)
+        2. Fallback: pytube
+        3. Minimal: Basic info with video ID
+        
+        Args:
+            video_id: YouTube video identifier.
+            url: Full YouTube video URL.
             
-        Returns
-        -------
-        Dict[str, Any]
-            Video information dictionary.
+        Returns:
+            Dictionary containing video metadata.
         """
-        # Try yt-dlp first (most reliable)
-        if yt_dlp:
-            try:
-                return await self._get_video_info_yt_dlp(video_id, url)
-            except Exception as e:
-                print(f"yt-dlp failed: {e}")
+        extraction_attempts = []
         
-        # Fallback to pytube
-        if YouTube:
+        # Attempt 1: yt-dlp
+        if YT_DLP_AVAILABLE:
             try:
-                return await self._get_video_info_pytube(url)
+                metadata = await self._extract_metadata_with_ytdlp(video_id, url)
+                logger.debug("Successfully extracted metadata with yt-dlp")
+                return metadata
             except Exception as e:
-                print(f"pytube failed: {e}")
+                extraction_attempts.append(f"yt-dlp: {str(e)}")
+                logger.warning(f"yt-dlp extraction failed: {e}")
         
-        # Last resort - return minimal info
-        return {
-            "title": f"Video {video_id}",
-            "description": "Description not available",
-            "duration": 0,
-            "view_count": None,
-            "channel": "Unknown Channel",
-            "upload_date": None,
-            "url": url,
-            "video_id": video_id,
-            "thumbnail_url": f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
-        }
+        # Attempt 2: pytube
+        if PYTUBE_AVAILABLE:
+            try:
+                metadata = await self._extract_metadata_with_pytube(url)
+                logger.debug("Successfully extracted metadata with pytube")
+                return metadata
+            except Exception as e:
+                extraction_attempts.append(f"pytube: {str(e)}")
+                logger.warning(f"pytube extraction failed: {e}")
+        
+        # Fallback: Minimal metadata
+        logger.warning(f"All metadata extraction methods failed. Attempts: {extraction_attempts}")
+        return self._build_minimal_metadata(video_id, url)
     
-    async def _get_video_info_yt_dlp(self, video_id: str, url: str) -> Dict[str, Any]:
-        """Extract video info using yt-dlp."""
-        def extract_info():
-            # Try to use the same proxy as transcripts if available
+    async def _extract_metadata_with_ytdlp(
+        self, 
+        video_id: str, 
+        url: str
+    ) -> Dict[str, Any]:
+        """Extract video metadata using yt-dlp library.
+        
+        Args:
+            video_id: YouTube video identifier.
+            url: Full YouTube video URL.
+            
+        Returns:
+            Dictionary containing comprehensive video metadata.
+        """
+        def _extract():
+            # Configure proxy for yt-dlp
             http_proxy = os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY") or \
-                         os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
+                        os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
+            
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
                 'extract_flat': False,
-                # yt-dlp accepts a single proxy URL string
+                'socket_timeout': 30,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                },
                 **({'proxy': http_proxy} if http_proxy else {}),
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
+                
+                # Format upload date if available
+                upload_date = info.get('upload_date')
+                if upload_date:
+                    # Convert from YYYYMMDD to datetime object
+                    upload_date = datetime.strptime(upload_date, '%Y%m%d').date()
+                
                 return {
                     "title": info.get('title', 'Unknown Title'),
                     "description": info.get('description', ''),
                     "duration": info.get('duration', 0),
                     "view_count": info.get('view_count'),
+                    "like_count": info.get('like_count'),
                     "channel": info.get('uploader', 'Unknown Channel'),
-                    "upload_date": info.get('upload_date'),
+                    "channel_id": info.get('uploader_id'),
+                    "upload_date": upload_date,
                     "url": url,
                     "video_id": video_id,
-                    "thumbnail_url": info.get('thumbnail')
+                    "thumbnail_url": info.get('thumbnail'),
+                    "categories": info.get('categories', []),
+                    "tags": info.get('tags', []),
                 }
         
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, extract_info)
+        return await loop.run_in_executor(None, _extract)
     
-    async def _get_video_info_pytube(self, url: str) -> Dict[str, Any]:
-        """Extract video info using pytube."""
-        def extract_info():
-            # Pytube can accept proxies dict similar to requests
+    async def _extract_metadata_with_pytube(self, url: str) -> Dict[str, Any]:
+        """Extract video metadata using pytube library.
+        
+        Args:
+            url: Full YouTube video URL.
+            
+        Returns:
+            Dictionary containing video metadata.
+        """
+        def _extract():
+            # Configure proxy for pytube
             proxies = None
             http_proxy = os.getenv("YTA_HTTP_PROXY") or os.getenv("HTTP_PROXY")
             https_proxy = os.getenv("YTA_HTTPS_PROXY") or os.getenv("HTTPS_PROXY")
+            
             if http_proxy or https_proxy:
                 proxies = {}
                 if http_proxy:
                     proxies['http'] = http_proxy
                 if https_proxy:
                     proxies['https'] = https_proxy
+            
             yt = YouTube(url, proxies=proxies) if proxies else YouTube(url)
+            
             return {
-                "title": yt.title,
-                "description": yt.description,
-                "duration": yt.length,
+                "title": yt.title or 'Unknown Title',
+                "description": yt.description or '',
+                "duration": yt.length or 0,
                 "view_count": yt.views,
-                "channel": yt.author,
-                "upload_date": yt.publish_date.strftime('%Y%m%d') if yt.publish_date else None,
+                "channel": yt.author or 'Unknown Channel',
+                "upload_date": yt.publish_date,
                 "url": url,
                 "video_id": yt.video_id,
-                "thumbnail_url": yt.thumbnail_url
+                "thumbnail_url": yt.thumbnail_url,
+                "categories": [],  # pytube doesn't provide categories
+                "tags": yt.keywords if hasattr(yt, 'keywords') else [],
             }
         
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, extract_info)
+        return await loop.run_in_executor(None, _extract)
     
-    async def _get_transcript(
+    def _build_minimal_metadata(
         self, 
         video_id: str, 
-        language: str = "en", 
+        url: str
+    ) -> Dict[str, Any]:
+        """Build minimal video metadata when extraction libraries fail.
+        
+        Args:
+            video_id: YouTube video identifier.
+            url: Full YouTube video URL.
+            
+        Returns:
+            Dictionary with basic video information.
+        """
+        return {
+            "title": f"Video {video_id}",
+            "description": "Description not available",
+            "duration": 0,
+            "view_count": None,
+            "like_count": None,
+            "channel": "Unknown Channel",
+            "channel_id": None,
+            "upload_date": None,
+            "url": url,
+            "video_id": video_id,
+            "thumbnail_url": f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg",
+            "categories": [],
+            "tags": [],
+        }
+    
+    async def _extract_transcript(
+        self, 
+        video_id: str, 
+        preferred_language: str = "en", 
         max_length: int = 10000
     ) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Extract video transcript using YouTube Transcript API.
+        """Extract video transcript with automatic language detection.
         
-        Parameters
-        ----------
-        video_id : str
-            The YouTube video ID.
-        language : str
-            Preferred language for transcript.
-        max_length : int
-            Maximum transcript length.
+        Args:
+            video_id: YouTube video identifier.
+            preferred_language: ISO 639-1 language code for preferred transcript.
+            max_length: Maximum character length for transcript (truncates if longer).
             
-        Returns
-        -------
-        Tuple[Optional[str], Optional[str]]
-            A tuple containing (transcript_text, detected_language) or (None, None) if not available.
+        Returns:
+            Tuple containing:
+                - transcript_text: Extracted transcript text (or None)
+                - detected_language: Language code of extracted transcript
         """
-        print(f"DEBUG: Attempting transcript extraction for video_id: {video_id}")
-        print(f"DEBUG: Language: {language}, Max length: {max_length}")
-        
-        if not YouTubeTranscriptApi:
-            print("ERROR: YouTubeTranscriptApi is not available - package not imported")
+        if not TRANSCRIPT_API_AVAILABLE or not self.text_formatter:
+            logger.error("Transcript extraction dependencies not available")
             return None, None
         
-        if not self.text_formatter:
-            print("ERROR: TextFormatter is not available - package not imported")
-            return None, None
+        logger.debug(f"Extracting transcript for {video_id} (language: {preferred_language})")
         
-        def extract_transcript():
+        def _extract():
             try:
-                print(f"DEBUG: Creating YouTubeTranscriptApi instance...")
-                # Create an instance of YouTubeTranscriptApi with optional proxy support
-                ytt_api = self._build_ytt_api()
-                print(f"DEBUG: Available methods on ytt_api instance: {[method for method in dir(ytt_api) if not method.startswith('_')]}")
+                # Initialize API with proxy configuration
+                proxy_config = self._build_proxy_config()
+                ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config) if proxy_config else YouTubeTranscriptApi()
                 
-                # Try the direct fetch method first (current API)
+                # Attempt primary extraction method
                 try:
-                    print(f"DEBUG: Attempting fetch for video {video_id} with language {language}")
-                    fetched_transcript = ytt_api.fetch(video_id, languages=[language])
-                    print(f"DEBUG: Successfully fetched transcript object: {type(fetched_transcript)}")
+                    return self._extract_transcript_direct(
+                        ytt_api, video_id, preferred_language, max_length
+                    )
+                except Exception as direct_error:
+                    logger.debug(f"Direct extraction failed: {direct_error}")
+                    return self._extract_transcript_with_fallback(
+                        ytt_api, video_id, preferred_language, max_length
+                    )
                     
-                    # Use the FetchedTranscript object directly for formatting
-                    print(f"DEBUG: Retrieved {len(fetched_transcript)} transcript segments")
-                    
-                    print("DEBUG: Formatting transcript...")
-                    formatted_text = self.text_formatter.format_transcript(fetched_transcript)
-                    print(f"DEBUG: Formatted transcript length: {len(formatted_text)} characters")
-                    
-                    # Trim to max length if specified
-                    if max_length and len(formatted_text) > max_length:
-                        formatted_text = formatted_text[:max_length] + "\n[Transcript truncated...]"
-                        print(f"DEBUG: Truncated transcript to {max_length} characters")
-                    
-                    print("DEBUG: Transcript extraction completed successfully")
-                    return formatted_text, language
-                    
-                except Exception as e:
-                    print(f"DEBUG: Direct fetch failed: {e}")
-                    
-                    # Fallback to listing transcripts and manually selecting
-                    try:
-                        print(f"DEBUG: Trying list method for video {video_id}")
-                        transcript_list = ytt_api.list(video_id)
-                        print(f"DEBUG: Retrieved transcript list: {type(transcript_list)}")
-                        
-                        print(f"DEBUG: Available transcripts: {[t.language_code for t in transcript_list]}")
-                        
-                        # Try manual captions first, then auto-generated
-                        transcript = None
-                        detected_language = language  # Start with requested language
-                        try:
-                            print(f"DEBUG: Attempting to find manually created transcript in {language}")
-                            transcript = transcript_list.find_manually_created_transcript([language])
-                            print(f"DEBUG: Found manually created transcript in {language}")
-                        except Exception as e:
-                            print(f"DEBUG: Manual transcript not found: {e}")
-                            try:
-                                print(f"DEBUG: Attempting to find auto-generated transcript in {language}")
-                                transcript = transcript_list.find_generated_transcript([language])
-                                print(f"DEBUG: Found auto-generated transcript in {language}")
-                            except Exception as e2:
-                                print(f"DEBUG: Auto-generated transcript not found: {e2}")
-                                # Fall back to best available transcript (any language)
-                                transcript, detected_language = self._find_best_available_transcript(transcript_list)
-                                if transcript:
-                                    print(f"DEBUG: Auto-detected language: {detected_language}")
-                        
-                        if not transcript:
-                            print("ERROR: No transcript object found")
-                            return None, None
-                        
-                        # Fetch and format transcript
-                        print("DEBUG: Fetching transcript data...")
-                        fetched_transcript = transcript.fetch()
-                        print(f"DEBUG: Retrieved {len(fetched_transcript)} transcript segments")
-                        
-                        print("DEBUG: Formatting transcript...")
-                        formatted_text = self.text_formatter.format_transcript(fetched_transcript)
-                        print(f"DEBUG: Formatted transcript length: {len(formatted_text)} characters")
-                        
-                        # Trim to max length if specified
-                        if max_length and len(formatted_text) > max_length:
-                            formatted_text = formatted_text[:max_length] + "\n[Transcript truncated...]"
-                            print(f"DEBUG: Truncated transcript to {max_length} characters")
-                        
-                        print("DEBUG: Transcript extraction completed successfully")
-                        return formatted_text, detected_language
-                        
-                    except Exception as e2:
-                        print(f"DEBUG: List method also failed: {e2}")
-                        raise e2
-                
             except Exception as e:
-                print(f"ERROR: Transcript extraction failed: {e}")
-                print(f"ERROR: Exception type: {type(e).__name__}")
+                logger.error(f"Transcript extraction failed: {e}")
                 import traceback
-                print(f"ERROR: Full traceback:\n{traceback.format_exc()}")
+                logger.debug(f"Traceback: {traceback.format_exc()}")
                 return None, None
         
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, extract_transcript)
+        result = await loop.run_in_executor(None, _extract)
         
-        if result[0] is None:
-            print("WARNING: Transcript extraction returned None")
+        if result[0]:
+            logger.info(f"Transcript extracted: {len(result[0])} chars in '{result[1]}'")
         else:
-            print(f"SUCCESS: Transcript extraction returned {len(result[0])} characters in language '{result[1]}'")
+            logger.warning("No transcript available for this video")
         
         return result
     
-    def _find_best_available_transcript(self, transcript_list):
-        """
-        Find the best available transcript from transcript list.
+    def _extract_transcript_direct(
+        self, 
+        ytt_api: Any,
+        video_id: str,
+        preferred_language: str,
+        max_length: int
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Extract transcript using direct fetch method.
         
-        Priority order:
-        1. First manually created transcript (any language)
-        2. First auto-generated transcript (any language)
-        
-        Parameters
-        ----------
-        transcript_list : TranscriptList
-            List of available transcripts from youtube-transcript-api
+        Args:
+            ytt_api: YouTubeTranscriptApi instance.
+            video_id: YouTube video identifier.
+            preferred_language: Preferred transcript language.
+            max_length: Maximum transcript length.
             
-        Returns
-        -------
-        Tuple[transcript object or None, str or None]
-            A tuple containing (best_transcript, detected_language) or (None, None) if no transcripts exist
+        Returns:
+            Tuple of (transcript_text, language_code) or (None, None).
         """
         try:
-            # Log all available transcripts for debugging
-            available_langs = [t.language_code for t in transcript_list]
-            print(f"DEBUG: All available transcript languages: {available_langs}")
+            transcript_data = ytt_api.fetch(video_id, languages=[preferred_language])
+            transcript_text = self.text_formatter.format_transcript(transcript_data)
             
-            # First try to find any manually created transcript (not auto-generated)
-            for transcript in transcript_list:
-                if not transcript.is_generated:
-                    print(f"DEBUG: Found manually created transcript in language: {transcript.language_code}")
-                    print(f"DEBUG: Using '{transcript.language_code}' as best available language (manual)")
-                    return transcript, transcript.language_code
+            if max_length and len(transcript_text) > max_length:
+                transcript_text = transcript_text[:max_length] + "\n[Transcript truncated...]"
             
-            # If no manual transcripts, find first auto-generated transcript  
-            for transcript in transcript_list:
-                if transcript.is_generated:
-                    print(f"DEBUG: Found auto-generated transcript in language: {transcript.language_code}")
-                    print(f"DEBUG: Using '{transcript.language_code}' as best available language (auto-generated)")
-                    return transcript, transcript.language_code
+            return transcript_text, preferred_language
+        except Exception as e:
+            raise Exception(f"Direct fetch failed: {str(e)}")
+    
+    def _extract_transcript_with_fallback(
+        self, 
+        ytt_api: Any,
+        video_id: str,
+        preferred_language: str,
+        max_length: int
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Extract transcript using fallback methods with language detection.
+        
+        Args:
+            ytt_api: YouTubeTranscriptApi instance.
+            video_id: YouTube video identifier.
+            preferred_language: Preferred transcript language.
+            max_length: Maximum transcript length.
             
-            # If somehow we get here, try to get any transcript
-            for transcript in transcript_list:
-                print(f"DEBUG: Using first available transcript as fallback: {transcript.language_code}")
-                return transcript, transcript.language_code
-                    
-            print("DEBUG: No transcripts available at all")
-            return None, None
+        Returns:
+            Tuple of (transcript_text, language_code) or (None, None).
+        """
+        try:
+            transcript_list = ytt_api.list(video_id)
+            available_languages = [t.language_code for t in transcript_list]
+            logger.debug(f"Available transcript languages: {available_languages}")
+            
+            # Try to find transcript in preferred language
+            transcript, detected_language = self._find_transcript_by_preference(
+                transcript_list, preferred_language
+            )
+            
+            if not transcript:
+                logger.warning(f"No transcript found for language {preferred_language}")
+                return None, None
+            
+            # Fetch and format transcript
+            transcript_data = transcript.fetch()
+            transcript_text = self.text_formatter.format_transcript(transcript_data)
+            
+            # Apply length limit
+            if max_length and len(transcript_text) > max_length:
+                transcript_text = transcript_text[:max_length] + "\n[Transcript truncated...]"
+            
+            return transcript_text, detected_language
             
         except Exception as e:
-            print(f"ERROR: Failed to find best available transcript: {e}")
+            logger.error(f"Fallback transcript extraction failed: {e}")
             return None, None
     
-    async def _get_comments(self, video_id: str, max_comments: int = 20) -> Optional[List[str]]:
-        """
-        Extract video comments (limited implementation).
+    def _find_transcript_by_preference(
+        self, 
+        transcript_list: Any, 
+        preferred_language: str
+    ) -> Tuple[Optional[Any], Optional[str]]:
+        """Find the best available transcript based on language preferences.
         
-        Parameters
-        ----------
-        video_id : str
-            The YouTube video ID.
-        max_comments : int
-            Maximum number of comments to extract.
+        Priority:
+        1. Manually created transcript in preferred language
+        2. Auto-generated transcript in preferred language
+        3. Any manually created transcript
+        4. Any auto-generated transcript
+        
+        Args:
+            transcript_list: List of available transcripts.
+            preferred_language: ISO 639-1 language code.
             
-        Returns
-        -------
-        Optional[List[str]]
+        Returns:
+            Tuple of (transcript_object, language_code) or (None, None).
+        """
+        # Helper function to categorize transcripts
+        def categorize_transcripts():
+            manual_transcripts = []
+            auto_transcripts = []
+            preferred_manual = None
+            preferred_auto = None
+            
+            for transcript in transcript_list:
+                if transcript.language_code == preferred_language:
+                    if not transcript.is_generated:
+                        preferred_manual = transcript
+                    else:
+                        preferred_auto = transcript
+                elif not transcript.is_generated:
+                    manual_transcripts.append(transcript)
+                else:
+                    auto_transcripts.append(transcript)
+            
+            return preferred_manual, preferred_auto, manual_transcripts, auto_transcripts
+        
+        preferred_manual, preferred_auto, manual_transcripts, auto_transcripts = categorize_transcripts()
+        
+        # Select based on priority
+        if preferred_manual:
+            logger.debug(f"Found manually created transcript in preferred language: {preferred_language}")
+            return preferred_manual, preferred_language
+        
+        if preferred_auto:
+            logger.debug(f"Found auto-generated transcript in preferred language: {preferred_language}")
+            return preferred_auto, preferred_language
+        
+        if manual_transcripts:
+            selected = manual_transcripts[0]
+            logger.debug(f"Using manually created transcript in: {selected.language_code}")
+            return selected, selected.language_code
+        
+        if auto_transcripts:
+            selected = auto_transcripts[0]
+            logger.debug(f"Using auto-generated transcript in: {selected.language_code}")
+            return selected, selected.language_code
+        
+        logger.warning("No transcripts available")
+        return None, None
+    
+    async def _extract_comments(
+        self, 
+        video_id: str, 
+        max_comments: int = 20
+    ) -> Optional[List[str]]:
+        """Extract video comments (requires YouTube Data API v3).
+        
+        Note: This is a placeholder implementation. Full implementation requires:
+        1. YouTube Data API v3 enabled in Google Cloud Console
+        2. API key with appropriate quota
+        3. Proper pagination and error handling
+        
+        Args:
+            video_id: YouTube video identifier.
+            max_comments: Maximum number of comments to retrieve.
+            
+        Returns:
             List of comment texts or None if not available.
         """
-        # Note: YouTube Comments API requires API key and has quotas
-        # This is a placeholder implementation
-        # In a production environment, you would use YouTube Data API v3
+        if not self.youtube_api_key:
+            logger.warning("YouTube API key not configured - comment extraction disabled")
+            return None
         
-        if self.youtube_api_key:
-            # TODO: Implement YouTube Data API v3 comments extraction
-            # For now, return placeholder comments
-            return [
-                "Great video! Very informative.",
-                "Thanks for sharing this content.",
-                "This helped me understand the topic better."
-            ]
+        # TODO: Implement actual YouTube Data API v3 integration
+        # This would involve:
+        # 1. Setting up google-api-python-client
+        # 2. Implementing pagination
+        # 3. Handling rate limits and quotas
+        # 4. Processing comment threads
         
-        return None 
+        logger.info(f"Comment extraction requested for {video_id} (max: {max_comments})")
+        
+        # Placeholder implementation
+        placeholder_comments = [
+            "Great video! Very informative.",
+            "Thanks for sharing this content.",
+            "This helped me understand the topic better.",
+            "Looking forward to more content like this.",
+            "Well explained and easy to follow.",
+        ]
+        
+        return placeholder_comments[:max_comments]
