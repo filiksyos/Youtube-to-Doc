@@ -8,6 +8,7 @@ Turn any YouTube video into a comprehensive documentation link that AI coding to
 
 - **📺 YouTube Video Processing**: Extract video metadata, descriptions, and thumbnails
 - **📝 Transcript Extraction**: Automatically extract video transcripts in multiple languages
+- **🛟 Optional SearchApi Fallback**: [SearchApi](https://www.searchapi.io/) backs up video metadata and transcript extraction when existing providers fail. [Setup instructions](#optional-searchapi-fallback).
 - **💬 Comments Integration**: Optional inclusion of video comments for additional context
 - **🤖 AI-Friendly Output**: Generate structured documentation perfect for LLM consumption
 - **⚡ Fast Processing**: Efficient video processing with rate limiting and caching
@@ -21,6 +22,7 @@ Turn any YouTube video into a comprehensive documentation link that AI coding to
 - **Backend**: FastAPI + Python 3.11+
 - **Frontend**: Tailwind CSS + Jinja2 templates
 - **Video Processing**: yt-dlp, pytube, youtube-transcript-api
+- **Optional Fallback Provider**: [SearchApi](https://www.searchapi.io/) for YouTube video metadata and transcripts
 - **Token Estimation**: tiktoken
 - **Rate Limiting**: slowapi
 - **Deployment**: Docker, Docker Compose
@@ -112,8 +114,17 @@ cp .env.example .env
 
 ### Optional SearchApi Fallback
 
-Set `SEARCHAPI_API_KEY` in your server's environment or local `.env`, then restart
-the server. Leave it blank to keep SearchApi disabled. Docker Compose passes this
+[SearchApi](https://www.searchapi.io/) provides the optional YouTube metadata and
+transcript fallback. It is disabled by default and does not replace the existing
+providers. To enable it, add your SearchApi key to the server's private `.env`:
+
+```dotenv
+SEARCHAPI_API_KEY=your_searchapi_api_key
+```
+
+Alternatively, set `SEARCHAPI_API_KEY` directly in your server's environment.
+Restart the server after changing it. Leave it blank to keep SearchApi disabled.
+Docker Compose passes this
 variable through; for `docker run`, supply it with `--env-file .env` (keep that
 file private). Never commit the key or include it in frontend code.
 
