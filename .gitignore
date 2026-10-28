@@ -29,6 +29,7 @@ wheels/
 MANIFEST
 
 # Virtual environments
+.venv/
 venv/
 env/
 ENV/
@@ -102,4 +103,4 @@ media/
 # Backup files
 *.bak
 *.backup
-*.old 
+*.old

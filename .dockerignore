@@ -1,0 +1,14 @@
+# Never bake server credentials into an image; pass them at runtime.
+.env
+.env.*
+!.env.example
+.aws
+.git
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+.pytest_cache
+.coverage
+htmlcov

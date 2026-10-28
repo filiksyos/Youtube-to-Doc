@@ -8,6 +8,7 @@ Turn any YouTube video into a comprehensive documentation link that AI coding to
 
 - **📺 YouTube Video Processing**: Extract video metadata, descriptions, and thumbnails
 - **📝 Transcript Extraction**: Automatically extract video transcripts in multiple languages
+- **🛟 Optional SearchApi Fallback**: [SearchApi](https://www.searchapi.io/) backs up video metadata and transcript extraction when existing providers fail. [Setup instructions](#optional-searchapi-fallback).
 - **💬 Comments Integration**: Optional inclusion of video comments for additional context
 - **🤖 AI-Friendly Output**: Generate structured documentation perfect for LLM consumption
 - **⚡ Fast Processing**: Efficient video processing with rate limiting and caching
@@ -21,6 +22,7 @@ Turn any YouTube video into a comprehensive documentation link that AI coding to
 - **Backend**: FastAPI + Python 3.11+
 - **Frontend**: Tailwind CSS + Jinja2 templates
 - **Video Processing**: yt-dlp, pytube, youtube-transcript-api
+- **Optional Fallback Provider**: [SearchApi](https://www.searchapi.io/) for YouTube video metadata and transcripts
 - **Token Estimation**: tiktoken
 - **Rate Limiting**: slowapi
 - **Deployment**: Docker, Docker Compose
@@ -106,8 +108,52 @@ cp .env.example .env
 
 - `ALLOWED_HOSTS`: Comma-separated list of allowed hosts
 - `YOUTUBE_API_KEY`: Optional YouTube Data API key for enhanced features
+- `SEARCHAPI_API_KEY`: Optional server-side SearchApi key for metadata and transcript fallback
 - `OPENAI_API_KEY`: Optional OpenAI API key for AI-enhanced processing
 - `RATE_LIMIT_PER_MINUTE`: Number of requests per minute per IP
+
+### Optional SearchApi Fallback
+
+[SearchApi](https://www.searchapi.io/) provides the optional YouTube metadata and
+transcript fallback. It is disabled by default and does not replace the existing
+providers. To enable it, add your SearchApi key to the server's private `.env`:
+
+```dotenv
+SEARCHAPI_API_KEY=your_searchapi_api_key
+```
+
+Alternatively, set `SEARCHAPI_API_KEY` directly in your server's environment.
+Restart the server after changing it. Leave it blank to keep SearchApi disabled.
+Docker Compose passes this
+variable through; for `docker run`, supply it with `--env-file .env` (keep that
+file private). Never commit the key or include it in frontend code.
+
+Existing providers stay first:
+
+- **Metadata:** yt-dlp → pytube → SearchApi's `youtube_video` engine → minimal metadata.
+- **Transcripts:** youtube-transcript-api (including its existing language fallback)
+  → SearchApi's `youtube_transcripts` engine → no transcript.
+
+SearchApi is called only when the existing providers fail, are unavailable, or
+return an empty transcript. It receives the video ID and, for transcripts, the
+preferred language. If SearchApi reports that language unavailable and lists other
+tracks, the app tries the first available alternative once and records its language.
+The same transcript length limit and truncation marker apply to both providers.
+Comments are unchanged; SearchApi is not used for comments.
+
+Enabling this fallback can consume your SearchApi credits: each processing attempt
+can make one metadata request and up to two transcript requests. Successful primary
+providers make no SearchApi requests. Authentication, quota, timeout, malformed
+response, and service errors degrade to the existing minimal metadata / missing
+transcript behavior, without automatic retries. Requests have a 5-second connection
+timeout and 20-second read timeout. Credentials use the Authorization header, not
+the URL, and provider error bodies are not logged or returned to users.
+
+See the official [YouTube Video API](https://www.searchapi.io/docs/youtube-video)
+and [YouTube Transcripts API](https://www.searchapi.io/docs/youtube-transcripts)
+documentation. The automated tests use mocked responses and require no key or
+credits. A live smoke test requires a separately configured server key and will
+consume requests; it is not part of the test suite.
 
 ### AWS S3 Integration (for cloud documentation links)
 
@@ -213,6 +259,10 @@ The app will automatically route YouTube API calls through the proxy when these 
 
 - Main endpoint: 10 requests per minute per IP
 - Video-specific endpoint: 5 requests per minute per IP
+- Streaming processing endpoint: 5 requests per minute per IP (including cache checks)
+
+These are per-IP limits, not an account-wide SearchApi spending cap. Monitor your
+provider quota before enabling the optional fallback on a public deployment.
 
 ## 🐳 Docker Deployment
 
@@ -245,10 +295,12 @@ The generated documentation includes:
 
 ## 🧪 Testing
 
-Run tests (when available):
+Install test dependencies and run the mocked, network-free tests:
 
 ```bash
+python -m pip install -r requirements.txt pytest
 python -m pytest tests/
+python -m compileall -q src tests
 ```
 
 ## 🤝 Contributing
