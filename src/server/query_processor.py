@@ -50,7 +50,7 @@ async def process_query(
         Rendered template response containing the processed results or an error message.
     """
     template = "index.jinja" if is_index else "video.jinja"
-    template_response = partial(templates.TemplateResponse, name=template)
+    template_response = partial(templates.TemplateResponse, request=request, name=template)
 
     context = {
         "request": request,
@@ -325,4 +325,4 @@ def _print_error(url: str, error: Exception) -> None:
     """Print error message with video URL."""
     print(f"{Colors.BROWN}WARN{Colors.END}: {Colors.RED}<-  {Colors.END}", end="")
     print(f"{Colors.WHITE}{url:<50}{Colors.END}", end="")
-    print(f" | {Colors.RED}{error}{Colors.END}") 
+    print(f" | {Colors.RED}{error}{Colors.END}")

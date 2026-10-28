@@ -59,7 +59,7 @@ async def rate_limit_exception_handler(request: Request, exc):
     Response
         A response indicating the rate limit was exceeded.
     """
-    return await _rate_limit_exceeded_handler(request, exc)
+    return _rate_limit_exceeded_handler(request, exc)
 
 
 def log_slider_to_size(slider_value: int) -> int:
@@ -117,4 +117,4 @@ async def lifespan(app) -> Generator:
     yield
     
     # Shutdown
-    print(f"{Colors.RED}YouTube to Doc server shutting down...{Colors.END}") 
+    print(f"{Colors.RED}YouTube to Doc server shutting down...{Colors.END}")

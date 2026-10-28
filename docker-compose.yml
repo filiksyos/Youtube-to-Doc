@@ -8,6 +8,7 @@ services:
     environment:
       - DEBUG=True
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      - SEARCHAPI_API_KEY=${SEARCHAPI_API_KEY:-}
     volumes:
       - .:/app
     restart: unless-stopped
@@ -27,4 +28,4 @@ services:
 
 networks:
   default:
-    name: youtubedoc-network 
+    name: youtubedoc-network

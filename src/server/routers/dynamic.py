@@ -126,7 +126,9 @@ async def check_process(
 
 
 @router.get("/api/process/stream")
+@limiter.limit("5/minute")
 async def stream_process(
+    request: Request,
     url: str = Query(..., description="YouTube video URL"),
     max_transcript_length: int = Query(10000),
     include_comments: bool = Query(False),
@@ -219,9 +221,11 @@ async def stream_process(
         )
         transcript = None
         try:
-            transcript = await processor._get_transcript(  # type: ignore[attr-defined]
+            transcript, detected_language = await processor._get_transcript(  # type: ignore[attr-defined]
                 video_id, language, max_transcript_length
             )
+            if detected_language:
+                video_info["detected_transcript_language"] = detected_language
             yield sse(
                 {
                     "status": "transcript_done",

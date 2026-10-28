@@ -37,6 +37,7 @@ except ImportError:
     RegexMatchError = None
 
 from .schemas.video_schema import VideoQuery, VideoInfo
+from .searchapi import SearchApiClient, SearchApiError
 
 
 class YoutubeProcessor:
@@ -46,6 +47,8 @@ class YoutubeProcessor:
         """Initialize the YouTube processor."""
         self.text_formatter = TextFormatter() if TextFormatter else None
         self.youtube_api_key = os.getenv("YOUTUBE_API_KEY")
+        searchapi_key = (os.getenv("SEARCHAPI_API_KEY") or "").strip()
+        self.searchapi = SearchApiClient(searchapi_key) if searchapi_key else None
         self._check_dependencies()
         # Detect proxy-related env at startup for better logs
         self._log_proxy_env_state()
@@ -217,6 +220,13 @@ class YoutubeProcessor:
             except Exception as e:
                 print(f"pytube failed: {e}")
         
+        # Optional paid fallback, only after both existing providers fail.
+        if self.searchapi:
+            try:
+                return await asyncio.to_thread(self.searchapi.get_video_info, video_id, url)
+            except SearchApiError as exc:
+                print(f"WARNING: SearchApi metadata fallback unavailable: {exc}")
+
         # Last resort - return minimal info
         return {
             "title": f"Video {video_id}",
@@ -291,6 +301,25 @@ class YoutubeProcessor:
         return await loop.run_in_executor(None, extract_info)
     
     async def _get_transcript(
+        self,
+        video_id: str,
+        language: str = "en",
+        max_length: int = 10000,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Keep the existing transcript provider first; use SearchApi if needed."""
+        result = await self._get_transcript_youtube_api(video_id, language, max_length)
+        if result[0] and result[0].strip():
+            return result
+        if self.searchapi:
+            try:
+                return await asyncio.to_thread(
+                    self.searchapi.get_transcript, video_id, language, max_length
+                )
+            except SearchApiError as exc:
+                print(f"WARNING: SearchApi transcript fallback unavailable: {exc}")
+        return None, None
+
+    async def _get_transcript_youtube_api(
         self, 
         video_id: str, 
         language: str = "en", 
@@ -503,4 +532,4 @@ class YoutubeProcessor:
                 "This helped me understand the topic better."
             ]
         
-        return None 
+        return None
